@@ -17,6 +17,29 @@ export const API_ENDPOINTS = {
     BASE: '/api/instances',
     BY_ID: (id: string) => `/api/instances/${id}`,
     TEST_CONNECTION: (id: string) => `/api/instances/${id}/test-connection`,
+    // Instance Features
+    OS_INFO: (id: string) => `/api/instances/${id}/os-info`,
+    PREFLIGHT: (id: string) => `/api/instances/${id}/preflight`,
+    DRY_RUN: (id: string) => `/api/instances/${id}/provision/dry-run`,
+    SOFTWARE_TEMPLATES: (id: string) => `/api/instances/${id}/software/templates`,
+    INSTALL_SOFTWARE: (id: string) => `/api/instances/${id}/software/install`,
+    // SFTP File Operations
+    FILES_LIST: (id: string) => `/api/instances/${id}/files/list`,
+    FILES_DOWNLOAD: (id: string) => `/api/instances/${id}/files/download`,
+    FILES_UPLOAD: (id: string) => `/api/instances/${id}/files/upload`,
+    FILES_DELETE: (id: string) => `/api/instances/${id}/files/delete`,
+    FILES_MKDIR: (id: string) => `/api/instances/${id}/files/mkdir`,
+    // Database GUI
+    DATABASE_DETECT: (id: string) => `/api/instances/${id}/database/detect`,
+    DATABASE_LIST: (id: string) => `/api/instances/${id}/database/list`,
+    DATABASE_TABLES: (id: string) => `/api/instances/${id}/database/tables`,
+    DATABASE_SCHEMA: (id: string) => `/api/instances/${id}/database/schema`,
+    DATABASE_QUERY: (id: string) => `/api/instances/${id}/database/query`,
+    // Port Forwarding
+    PORT_FORWARD_CREATE: (id: string) => `/api/instances/${id}/port-forward/create`,
+    PORT_FORWARD_STOP: (id: string, forwardId: string) => `/api/instances/${id}/port-forward/${forwardId}/stop`,
+    PORT_FORWARD_LIST: (id: string) => `/api/instances/${id}/port-forward/list`,
+    PORT_FORWARD_AVAILABLE_PORT: (id: string) => `/api/instances/${id}/port-forward/available-port`,
   },
   // Sessions
   SESSIONS: {
@@ -28,6 +51,9 @@ export const API_ENDPOINTS = {
     HISTORY: '/api/sessions/history',
     ACTIVE: '/api/sessions/active',
     DISCONNECT_ALL: '/api/sessions/disconnect-all',
+    // Clipboard Sync
+    CLIPBOARD_GET: (id: string) => `/api/sessions/${id}/clipboard`,
+    CLIPBOARD_SET: (id: string) => `/api/sessions/${id}/clipboard`,
   },
   // Users
   USERS: {
