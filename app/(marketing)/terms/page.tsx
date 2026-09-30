@@ -44,7 +44,7 @@ export default function TermsOfServicePage() {
               </p>
               <div className="p-4 rounded-lg bg-card/50 border border-border">
                 <p className="text-foreground font-medium">BYOC Model:</p>
-                <p>CloudDesk operates on a "Bring Your Own Cloud" model. We facilitate connections to YOUR servers — we do not provide virtual machines or cloud infrastructure. You are responsible for the security, configuration, and operation of your own cloud instances.</p>
+                <p>CloudDesk operates on a &quot;Bring Your Own Cloud&quot; model. We facilitate connections to YOUR servers — we do not provide virtual machines or cloud infrastructure. You are responsible for the security, configuration, and operation of your own cloud instances.</p>
               </div>
             </section>
 
@@ -90,7 +90,7 @@ export default function TermsOfServicePage() {
               <ul className="list-disc pl-6 space-y-2">
                 <li>The security and configuration of your own cloud instances</li>
                 <li>The content stored on and activities performed through your servers</li>
-                <li>Compliance with your cloud provider's terms of service</li>
+                <li>Compliance with your cloud provider&apos;s terms of service</li>
                 <li>Maintaining backups of your data</li>
                 <li>Ensuring you have proper authorization to access connected systems</li>
                 <li>Any costs incurred from your cloud providers (AWS, GCP, Azure, etc.)</li>
@@ -130,7 +130,7 @@ export default function TermsOfServicePage() {
               <h2 className="text-2xl font-semibold text-foreground mb-4">9. Disclaimer of Warranties</h2>
               <div className="p-4 rounded-lg bg-card/50 border border-border">
                 <p className="text-foreground">
-                  THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR COURSE OF PERFORMANCE.
+                  THE SERVICE IS PROVIDED &quot;AS IS&quot; AND &quot;AS AVAILABLE&quot; WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR COURSE OF PERFORMANCE.
                 </p>
               </div>
               <p className="mt-4">
@@ -164,7 +164,7 @@ export default function TermsOfServicePage() {
               </p>
               <ul className="list-disc pl-6 space-y-2">
                 <li>Posting the updated Terms on this page</li>
-                <li>Updating the "Last updated" date</li>
+                <li>Updating the &quot;Last updated&quot; date</li>
                 <li>Sending an email to registered users (for significant changes)</li>
               </ul>
               <p className="mt-4">

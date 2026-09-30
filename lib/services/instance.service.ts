@@ -21,6 +21,7 @@ import type {
   TableSchema,
   PortForward,
   CreatePortForwardData,
+  CommandResult,
 } from '@/lib/types';
 
 export const instanceService = {
@@ -69,9 +70,11 @@ export const instanceService = {
     }
   },
 
-  async testConnection(id: string): Promise<TestConnectionResult> {
+  async testConnection(id: string, password: string): Promise<TestConnectionResult> {
+    // The account password decrypts the stored credential for the test
     const response = await api.post<TestConnectionResult>(
-      API_ENDPOINTS.INSTANCES.TEST_CONNECTION(id)
+      API_ENDPOINTS.INSTANCES.TEST_CONNECTION(id),
+      { password }
     );
     if (response.success && response.data) {
       return response.data;
@@ -252,6 +255,20 @@ export const instanceService = {
       return response.data;
     }
     throw new Error(response.error?.message || 'Failed to execute query');
+  },
+
+  // ========== Browser Terminal ==========
+
+  async executeCommand(id: string, password: string, command: string): Promise<CommandResult> {
+    const response = await api.post<CommandResult>(
+      API_ENDPOINTS.INSTANCES.TERMINAL_EXECUTE(id),
+      { password, command },
+      { timeout: 60000 } as never // commands may run for up to 30s on the server
+    );
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error?.message || 'Failed to execute command');
   },
 
   // ========== Port Forwarding Operations ==========

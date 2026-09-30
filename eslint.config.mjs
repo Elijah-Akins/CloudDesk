@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored noVNC and separately-built packages with their own tooling
+    "public/novnc/**",
+    "backend/**",
+    "license-server/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 

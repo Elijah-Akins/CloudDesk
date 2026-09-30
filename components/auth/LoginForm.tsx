@@ -10,6 +10,7 @@ import { Button, Input, Card } from '@/components/ui';
 import { useAuthStore, toast } from '@/lib/stores';
 import { loginSchema, type LoginFormData } from '@/lib/utils/validators';
 import { ROUTES, SUCCESS_MESSAGES } from '@/lib/utils/constants';
+import { getPostLoginRedirect } from '@/lib/utils/helpers';
 
 export function LoginForm() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export function LoginForm() {
     try {
       await login(data);
       toast.success(SUCCESS_MESSAGES.LOGIN);
-      router.push(ROUTES.DASHBOARD);
+      router.push(getPostLoginRedirect());
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed';
       toast.error(message);

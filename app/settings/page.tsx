@@ -21,7 +21,7 @@ const aboutContent = (
     <p>
       <span className="font-medium text-foreground">Password Security</span>
       <br />
-      Change your password regularly. Use a unique, strong password that you don't use elsewhere.
+      Change your password regularly. Use a unique, strong password that you don&apos;t use elsewhere.
     </p>
   </div>
 );
@@ -39,7 +39,7 @@ const securityContent = (
       <Shield className="w-4 h-4 text-status-info mt-0.5 flex-shrink-0" />
       <div>
         <p className="font-medium text-foreground">Credential Protection</p>
-        <p>SSH keys are encrypted with your password - we can never see them.</p>
+        <p>SSH keys are stored encrypted with your password and only decrypted in memory while you connect.</p>
       </div>
     </div>
     <div className="flex items-start gap-2">
@@ -60,7 +60,7 @@ const helpContent = (
       Use the forgot password link on the login page to reset your password via email.
     </p>
     <p>
-      <span className="font-medium text-foreground">Can't Update Email?</span>
+      <span className="font-medium text-foreground">Can&apos;t Update Email?</span>
       <br />
       Contact support if you need to change your account email address.
     </p>
@@ -129,7 +129,7 @@ export default function SettingsPage() {
                   'Update your password every 90 days',
                   'Never share your credentials with anyone',
                 ]}
-                securityNote="Your password is used to encrypt SSH credentials. If you change it, you may need to re-enter your instance credentials."
+                securityNote="Your password is used to encrypt SSH credentials. Changing it re-encrypts them for the new password automatically."
               />
             </div>
           </div>

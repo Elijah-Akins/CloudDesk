@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores';
 import { ROUTES } from '@/lib/utils/constants';
+import { getPostLoginRedirect } from '@/lib/utils/helpers';
 import { PageLoader, ToastContainer } from '@/components/ui';
 
 interface AuthLayoutProps {
@@ -21,7 +22,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
 
   useEffect(() => {
     if (isInitialized && isAuthenticated) {
-      router.push(ROUTES.DASHBOARD);
+      router.push(getPostLoginRedirect());
     }
   }, [isInitialized, isAuthenticated, router]);
 

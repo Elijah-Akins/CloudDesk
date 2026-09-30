@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { api } from '@/lib/api';
 
 export type LicenseTier = 'community' | 'team' | 'enterprise';
 export type LimitType = 'user' | 'instance' | 'session';
@@ -33,11 +34,14 @@ interface LicenseState {
 
   // Actions
   setTier: (tier: LicenseTier) => void;
+  /** Load the deployment's current tier from the API (GET /api/license) */
+  fetchLicense: () => Promise<void>;
   showUpgradeModal: (limitType: LimitType, currentUsage?: number, limit?: number, errorCode?: string | undefined) => void;
   hideUpgradeModal: () => void;
 }
 
-// License tier configurations
+// License tier configurations (limits mirror backend/src/services/licenseService.ts
+// and the license server's tier definitions)
 export const LICENSE_TIERS: Record<LicenseTier, LicenseInfo> = {
   community: {
     tier: 'community',
@@ -51,9 +55,9 @@ export const LICENSE_TIERS: Record<LicenseTier, LicenseInfo> = {
   team: {
     tier: 'team',
     limits: {
-      users: 25,
-      instances: 50,
-      sessions: 10,
+      users: Infinity,
+      instances: Infinity,
+      sessions: 20,
     },
     features: [
       'Advanced VNC features',
@@ -79,6 +83,9 @@ export const LICENSE_TIERS: Record<LicenseTier, LicenseInfo> = {
   },
 };
 
+const isLicenseTier = (value: unknown): value is LicenseTier =>
+  value === 'community' || value === 'team' || value === 'enterprise';
+
 export const useLicenseStore = create<LicenseState>((set) => ({
   tier: 'community',
   isLoading: false,
@@ -92,6 +99,20 @@ export const useLicenseStore = create<LicenseState>((set) => ({
   },
 
   setTier: (tier) => set({ tier }),
+
+  fetchLicense: async () => {
+    set({ isLoading: true });
+    try {
+      const response = await api.get<{ tier: string }>('/api/license');
+      if (response.success && isLicenseTier(response.data?.tier)) {
+        set({ tier: response.data.tier });
+      }
+    } catch {
+      // Keep the current tier; the upgrade prompt still works without it
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
   showUpgradeModal: (limitType, currentUsage = 0, limit = 0, errorCode = undefined) =>
     set({

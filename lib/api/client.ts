@@ -9,15 +9,14 @@ import {
   API_ENDPOINTS,
   TIMEOUTS,
   ERROR_MESSAGES,
-  ROUTES,
 } from '@/lib/utils/constants';
 import {
   getAccessToken,
   getRefreshToken,
   setTokens,
   clearTokens,
-  isTokenExpired,
-  getTokenExpiry,
+  getLoginUrl,
+  isProtectedPath,
 } from '@/lib/utils/helpers';
 import type { ApiResponse, AuthTokens } from '@/lib/types';
 
@@ -76,13 +75,6 @@ apiClient.interceptors.request.use(
     const token = getAccessToken();
 
     if (token) {
-      // Check if token is about to expire and we should preemptively refresh
-      const expiry = getTokenExpiry(token);
-      if (expiry && expiry - Date.now() < TIMEOUTS.TOKEN_REFRESH_BUFFER && !isRefreshing) {
-        // Token is about to expire, trigger refresh in background
-        // But still use current token for this request
-      }
-
       config.headers.Authorization = `Bearer ${token}`;
     }
 
@@ -102,6 +94,20 @@ const LICENSE_ERROR_CODES = [
 
 type LicenseErrorCode = typeof LICENSE_ERROR_CODES[number];
 
+// 401s that mean "the password you just entered is wrong" rather than "your session
+// expired". Refreshing tokens can't fix these, so surface the server's message instead.
+const CREDENTIAL_ERROR_CODES = ['INVALID_CREDENTIALS', 'INCORRECT_PASSWORD', 'USER_INACTIVE'];
+const NO_REFRESH_ENDPOINTS: string[] = [API_ENDPOINTS.AUTH.LOGIN, API_ENDPOINTS.AUTH.REGISTER];
+
+// Session is gone: drop tokens and, on pages that need a user, go to login and come back after
+function endSession(): void {
+  clearTokens();
+  const { pathname, search } = window.location;
+  if (isProtectedPath(pathname)) {
+    window.location.href = getLoginUrl(`${pathname}${search}`);
+  }
+}
+
 // Response interceptor - handle 401 and refresh tokens
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
@@ -116,7 +122,9 @@ apiClient.interceptors.response.use(
       if (errorCode && LICENSE_ERROR_CODES.includes(errorCode as LicenseErrorCode)) {
         // Import dynamically to avoid circular dependencies
         const { useLicenseStore } = await import('@/lib/stores/license.store');
-        const { showUpgradeModal } = useLicenseStore.getState();
+        const { showUpgradeModal, fetchLicense } = useLicenseStore.getState();
+        // Show the deployment's real tier (and so the right upgrade path)
+        await fetchLicense();
 
         const details = error.response.data?.error?.details as Record<string, number> | undefined;
         const currentUsage = details?.current || 0;
@@ -133,11 +141,26 @@ apiClient.interceptors.response.use(
 
     // Handle 401 Unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
+      const requestUrl = originalRequest.url || '';
+      const errorCode = error.response.data?.error?.code;
+
+      if (
+        NO_REFRESH_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint)) ||
+        (errorCode && CREDENTIAL_ERROR_CODES.includes(errorCode))
+      ) {
+        return Promise.reject(transformError(error));
+      }
+
       // Don't retry refresh endpoint itself
-      if (originalRequest.url?.includes(API_ENDPOINTS.AUTH.REFRESH)) {
-        clearTokens();
-        window.location.href = ROUTES.LOGIN;
-        return Promise.reject(error);
+      if (requestUrl.includes(API_ENDPOINTS.AUTH.REFRESH)) {
+        endSession();
+        return Promise.reject(transformError(error));
+      }
+
+      // Nothing to refresh with (never logged in, or already logged out)
+      if (!getRefreshToken()) {
+        endSession();
+        return Promise.reject(transformError(error));
       }
 
       if (isRefreshing) {
@@ -165,9 +188,8 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError as Error, null);
-        clearTokens();
-        window.location.href = ROUTES.LOGIN;
-        return Promise.reject(refreshError);
+        endSession();
+        return Promise.reject(transformError(error));
       } finally {
         isRefreshing = false;
       }

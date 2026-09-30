@@ -7,6 +7,7 @@ import type {
   RegisterData,
   AuthResponse,
   ChangePasswordData,
+  ChangePasswordResult,
   DeleteAccountData,
   DeleteAccountResponse,
 } from '@/lib/types';
@@ -44,11 +45,12 @@ export const authService = {
     throw new Error(response.error?.message || 'Failed to get user');
   },
 
-  async changePassword(data: ChangePasswordData): Promise<void> {
-    const response = await api.post<void>(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, data);
+  async changePassword(data: ChangePasswordData): Promise<ChangePasswordResult> {
+    const response = await api.post<ChangePasswordResult>(API_ENDPOINTS.AUTH.CHANGE_PASSWORD, data);
     if (!response.success) {
       throw new Error(response.error?.message || 'Failed to change password');
     }
+    return response.data ?? {};
   },
 
   async refreshToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {

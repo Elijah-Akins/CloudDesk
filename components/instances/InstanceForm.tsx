@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Server, Globe, User, Tag, X, Lock, ShieldCheck } from 'lucide-react';
 import { Button, Input, Select, Textarea, Card, CardHeader, CardTitle, CardContent, CardFooter, PasswordPrompt } from '@/components/ui';
@@ -36,7 +36,8 @@ export function InstanceForm({ instance, mode }: InstanceFormProps) {
     setValue,
     formState: { errors },
   } = useForm<CreateInstanceFormData>({
-    resolver: zodResolver(isEdit ? updateInstanceSchema : createInstanceSchema) as any,
+    // The edit schema is a partial of the create schema; both validate the same form shape
+    resolver: zodResolver(isEdit ? updateInstanceSchema : createInstanceSchema) as Resolver<CreateInstanceFormData>,
     defaultValues: isEdit && instance
       ? {
           name: instance.name,
@@ -105,7 +106,12 @@ export function InstanceForm({ instance, mode }: InstanceFormProps) {
   const submitForm = async (data: CreateInstanceFormData) => {
     try {
       if (isEdit && instance) {
-        await updateInstance(instance.id, data as UpdateInstanceFormData);
+        // An empty credential means "keep the stored one", so don't send it
+        const { credential, ...otherFields } = data;
+        await updateInstance(
+          instance.id,
+          (credential ? data : otherFields) as UpdateInstanceFormData
+        );
         toast.success(SUCCESS_MESSAGES.INSTANCE_UPDATED);
       } else {
         await createInstance(data);
@@ -130,10 +136,11 @@ export function InstanceForm({ instance, mode }: InstanceFormProps) {
         password
       );
 
-      // Submit with encrypted credential
+      // Submit with encrypted credential; the server checks the password matches the account
       const dataToSubmit = {
         ...pendingFormData,
         credential: encryptedCredential,
+        password,
       };
 
       await submitForm(dataToSubmit);
@@ -286,8 +293,8 @@ export function InstanceForm({ instance, mode }: InstanceFormProps) {
             <div className="flex items-center gap-2 mt-2 p-2 rounded-lg bg-muted/50 border border-border/50">
               <ShieldCheck className="w-4 h-4 text-status-success flex-shrink-0" />
               <p className="text-xs text-muted-foreground">
-                Your credential will be encrypted with your account password.
-                We can never see your credential in plaintext.
+                Your credential will be encrypted with your account password. Only the
+                encrypted form is stored; it is decrypted in memory only while you connect.
               </p>
             </div>
           </div>
