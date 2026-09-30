@@ -8,7 +8,8 @@ import { licenseService, LicenseInfo } from '../services/licenseService';
 import { User } from '../models/User';
 import { Instance } from '../models/Instance';
 import { Session } from '../models/Session';
-import { ForbiddenError } from '../utils/errors';
+import { ForbiddenError, LicenseLimitError } from '../utils/errors';
+import { ERROR_CODES } from '../config/constants';
 
 /**
  * Add license info to request
@@ -48,8 +49,10 @@ export const checkUserLimit = async (
 
   if (!licenseService.canAddUser(currentUserCount)) {
     const license = licenseService.getLicense();
-    throw new ForbiddenError(
-      `User limit reached (${license.maxUsers}). Upgrade your license to add more users.`
+    throw new LicenseLimitError(
+      `User limit reached (${license.maxUsers}). Upgrade your license to add more users.`,
+      ERROR_CODES.USER_LIMIT_REACHED,
+      { current: currentUserCount, limit: license.maxUsers }
     );
   }
 
@@ -69,8 +72,10 @@ export const checkInstanceLimit = async (
 
   if (!licenseService.canAddInstance(currentInstanceCount)) {
     const license = licenseService.getLicense();
-    throw new ForbiddenError(
-      `Instance limit reached (${license.maxInstances}). Upgrade your license to add more instances.`
+    throw new LicenseLimitError(
+      `Instance limit reached (${license.maxInstances}). Upgrade your license to add more instances.`,
+      ERROR_CODES.INSTANCE_LIMIT_REACHED,
+      { current: currentInstanceCount, limit: license.maxInstances }
     );
   }
 
@@ -91,8 +96,10 @@ export const checkSessionLimit = async (
 
   if (!licenseService.canStartSession(currentSessionCount)) {
     const license = licenseService.getLicense();
-    throw new ForbiddenError(
-      `Concurrent session limit reached (${license.maxConcurrentSessions}). Wait for existing sessions to end or upgrade your license.`
+    throw new LicenseLimitError(
+      `Concurrent session limit reached (${license.maxConcurrentSessions}). Wait for existing sessions to end or upgrade your license.`,
+      ERROR_CODES.SESSION_LIMIT_REACHED,
+      { current: currentSessionCount, limit: license.maxConcurrentSessions }
     );
   }
 

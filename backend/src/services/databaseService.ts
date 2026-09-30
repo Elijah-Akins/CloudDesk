@@ -38,6 +38,37 @@ const DATABASE_CLIENTS: Record<string, { command: string; versionFlag: string }>
 
 class DatabaseService {
   /**
+   * Validate connection fields that end up in shell commands. String fields are
+   * shell-quoted by the command builders; numeric fields are interpolated as-is,
+   * so they must be real integers.
+   */
+  private validateConnection(connection: DatabaseConnection): DatabaseConnection {
+    if (!connection || !Object.prototype.hasOwnProperty.call(DATABASE_CLIENTS, connection.type)) {
+      throw new Error(`Unsupported database type: ${connection?.type}`);
+    }
+
+    const rawPort = connection.port as unknown;
+    let port: number | undefined;
+    if (rawPort !== undefined && rawPort !== null && rawPort !== '') {
+      port = Number(rawPort);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error('Port must be an integer between 1 and 65535');
+      }
+    }
+
+    if (
+      connection.type === 'redis' &&
+      connection.database !== undefined &&
+      connection.database !== '' &&
+      !/^\d{1,5}$/.test(String(connection.database))
+    ) {
+      throw new Error('Redis database must be a numeric index');
+    }
+
+    return { ...connection, port: port as number };
+  }
+
+  /**
    * Detect available database clients on the remote system
    */
   async detectDatabases(client: Client): Promise<DatabaseInfo[]> {
@@ -96,6 +127,7 @@ class DatabaseService {
     const startTime = Date.now();
 
     try {
+      connection = this.validateConnection(connection);
       let command: string;
       let parseResult: (output: string) => QueryResult;
 
@@ -127,7 +159,7 @@ class DatabaseService {
       const result = await sshService.executeCommand(client, command, { timeout: 30000 });
       const executionTime = Date.now() - startTime;
 
-      if (result.exitCode !== 0 && result.stderr) {
+      if (result.code !== 0 && result.stderr) {
         return {
           success: false,
           error: result.stderr.trim() || 'Query execution failed',
@@ -154,6 +186,7 @@ class DatabaseService {
    */
   async listDatabases(client: Client, connection: DatabaseConnection): Promise<string[]> {
     try {
+      connection = this.validateConnection(connection);
       let command: string;
 
       switch (connection.type) {
@@ -176,7 +209,7 @@ class DatabaseService {
 
       const result = await sshService.executeCommand(client, command, { timeout: 10000 });
 
-      if (result.exitCode !== 0) {
+      if (result.code !== 0) {
         throw new Error(result.stderr || 'Failed to list databases');
       }
 
@@ -191,6 +224,7 @@ class DatabaseService {
    */
   async listTables(client: Client, connection: DatabaseConnection): Promise<string[]> {
     try {
+      connection = this.validateConnection(connection);
       let command: string;
 
       switch (connection.type) {
@@ -215,7 +249,7 @@ class DatabaseService {
 
       const result = await sshService.executeCommand(client, command, { timeout: 10000 });
 
-      if (result.exitCode !== 0) {
+      if (result.code !== 0) {
         throw new Error(result.stderr || 'Failed to list tables');
       }
 
@@ -234,20 +268,22 @@ class DatabaseService {
     tableName: string
   ): Promise<{ columns: { name: string; type: string; nullable: boolean }[] }> {
     try {
+      connection = this.validateConnection(connection);
+      const table = String(tableName);
       let command: string;
 
       switch (connection.type) {
         case 'mysql':
-          command = this.buildMySQLCommand(connection, `DESCRIBE \`${tableName}\`;`);
+          command = this.buildMySQLCommand(connection, `DESCRIBE \`${table.replace(/`/g, '``')}\`;`);
           break;
         case 'postgresql':
           command = this.buildPostgreSQLCommand(
             connection,
-            `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '${tableName}';`
+            `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '${table.replace(/'/g, "''")}';`
           );
           break;
         case 'sqlite':
-          command = this.buildSQLiteCommand(connection, `PRAGMA table_info(${tableName});`);
+          command = this.buildSQLiteCommand(connection, `PRAGMA table_info("${table.replace(/"/g, '""')}");`);
           break;
         default:
           return { columns: [] };
@@ -255,7 +291,7 @@ class DatabaseService {
 
       const result = await sshService.executeCommand(client, command, { timeout: 10000 });
 
-      if (result.exitCode !== 0) {
+      if (result.code !== 0) {
         throw new Error(result.stderr || 'Failed to get schema');
       }
 
@@ -378,10 +414,10 @@ class DatabaseService {
       parts.push(`-n ${connection.database}`);
     }
 
-    // Split query into command parts
-    parts.push(query);
-
-    return parts.join(' ');
+    // Feed the command on stdin rather than as shell words, so the remote shell
+    // never expands globs (e.g. `KEYS *`) or other metacharacters in the query.
+    // redis-cli does its own quote-aware splitting of each input line.
+    return `printf '%s\\n' ${this.escapeShellArg(query)} | ${parts.join(' ')}`;
   }
 
   private parseMySQLResult(output: string): QueryResult {

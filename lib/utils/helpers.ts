@@ -1,5 +1,5 @@
 import { formatDistanceToNow, format, parseISO } from 'date-fns';
-import { STORAGE_KEYS } from './constants';
+import { STORAGE_KEYS, ROUTES } from './constants';
 
 // Token Management
 export function getAccessToken(): string | null {
@@ -23,6 +23,39 @@ export function clearTokens(): void {
   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.USER);
+}
+
+// Post-login redirects
+
+// Pages that need a signed-in user; a failed session refresh on these sends the user to login
+const PROTECTED_PATH_PREFIXES = ['/dashboard', '/instances', '/sessions', '/settings', '/desktop', '/join'];
+
+export function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+/** Accept only same-site relative paths, so a crafted link can't redirect off-site after login */
+export function sanitizeRedirectPath(path: string | null | undefined): string | null {
+  if (!path || !path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\')) {
+    return null;
+  }
+  return path;
+}
+
+/** Login URL that returns the user to `returnTo` after signing in */
+export function getLoginUrl(returnTo?: string | null): string {
+  const target = sanitizeRedirectPath(returnTo);
+  if (!target || target === ROUTES.LOGIN || target.startsWith(`${ROUTES.LOGIN}?`)) {
+    return ROUTES.LOGIN;
+  }
+  return `${ROUTES.LOGIN}?redirect=${encodeURIComponent(target)}`;
+}
+
+/** Where to go after a successful login: the `redirect` query param if safe, else the dashboard */
+export function getPostLoginRedirect(): string {
+  if (typeof window === 'undefined') return ROUTES.DASHBOARD;
+  const target = sanitizeRedirectPath(new URLSearchParams(window.location.search).get('redirect'));
+  return target ?? ROUTES.DASHBOARD;
 }
 
 export function isTokenExpired(token: string): boolean {

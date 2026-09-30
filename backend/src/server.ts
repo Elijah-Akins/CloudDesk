@@ -9,6 +9,7 @@ import { createVNCProxy } from './websocket/vncProxy';
 import { connectionManager } from './websocket/connectionManager';
 import { logger } from './utils/logger';
 import { sessionRecoveryService } from './services/sessionRecoveryService';
+import { licenseService } from './services/licenseService';
 
 // Create Express app
 const app = createApp();
@@ -33,6 +34,7 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
 
     // Stop session cleanup job
     sessionService.stopCleanupJob();
+    licenseService.stop();
 
     // Close all WebSocket connections
     vncProxy.closeAll();
@@ -63,6 +65,9 @@ const startServer = async (): Promise<void> => {
   try {
     // Connect to database
     await connectDatabase();
+
+    // Validate the license key (degrades to the Community tier on any problem)
+    await licenseService.initialize();
 
     // Recover sessions from previous restart
     const recoveryResult = await sessionRecoveryService.recoverSessions();

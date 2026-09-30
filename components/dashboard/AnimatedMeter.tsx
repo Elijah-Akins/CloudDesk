@@ -18,12 +18,12 @@ export function AnimatedMeter({
   suffix = '',
   animate = true,
 }: AnimatedMeterProps) {
-  const [displayValue, setDisplayValue] = useState<number | string>(typeof value === 'number' ? 0 : value);
+  const [animatedValue, setAnimatedValue] = useState(0);
   const prevValueRef = useRef<number>(0);
+  const displayValue = typeof value === 'number' && animate ? animatedValue : value;
 
   useEffect(() => {
     if (typeof value !== 'number' || !animate) {
-      setDisplayValue(value);
       return;
     }
 
@@ -31,6 +31,7 @@ export function AnimatedMeter({
     const endValue = value;
     const duration = 1000;
     const startTime = Date.now();
+    let frame = 0;
 
     const animateValue = () => {
       const elapsed = Date.now() - startTime;
@@ -40,16 +41,17 @@ export function AnimatedMeter({
       const easeOut = 1 - Math.pow(1 - progress, 3);
       const currentValue = Math.round(startValue + (endValue - startValue) * easeOut);
 
-      setDisplayValue(currentValue);
+      setAnimatedValue(currentValue);
+      // Track what's on screen so an interrupted animation resumes from here
+      prevValueRef.current = currentValue;
 
       if (progress < 1) {
-        requestAnimationFrame(animateValue);
-      } else {
-        prevValueRef.current = endValue;
+        frame = requestAnimationFrame(animateValue);
       }
     };
 
-    requestAnimationFrame(animateValue);
+    frame = requestAnimationFrame(animateValue);
+    return () => cancelAnimationFrame(frame);
   }, [value, animate]);
 
   return (

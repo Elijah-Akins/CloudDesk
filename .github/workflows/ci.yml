@@ -35,6 +35,9 @@ jobs:
       - name: Run frontend lint
         run: npm run lint
 
+      - name: Run frontend type check
+        run: npx tsc --noEmit
+
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
@@ -42,6 +45,18 @@ jobs:
       - name: Run backend type check
         working-directory: ./backend
         run: npm run build
+
+      - name: Run backend unit tests
+        working-directory: ./backend
+        run: npm test
+
+      - name: Type check session controller
+        working-directory: ./backend/session-controller
+        run: npm ci && npx tsc --noEmit
+
+      - name: Type check session worker
+        working-directory: ./backend/session-worker
+        run: npm ci && npx tsc --noEmit
 
   test-frontend:
     name: Frontend Tests
@@ -68,6 +83,14 @@ jobs:
         run: npx playwright test --workers=1
         env:
           CI: true
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   docker-build-test:
     name: Docker Build Test
@@ -98,6 +121,7 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Empty API URL = same origin (API paths already start with /api)
           build-args: |
-            NEXT_PUBLIC_API_URL=/api
+            NEXT_PUBLIC_API_URL=
             NEXT_PUBLIC_APP_NAME=CloudDesk

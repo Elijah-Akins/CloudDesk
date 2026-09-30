@@ -8,7 +8,8 @@ import { User } from '../../models/User';
 import { Instance } from '../../models/Instance';
 import { Session } from '../../models/Session';
 import { logger } from '../../utils/logger';
-import { renderPage, filterBar, pagination, statusBadge, emptyState } from '../templates';
+import { escapeRegex } from '../../utils/helpers';
+import { renderPage, filterBar, pagination, statusBadge, emptyState, escapeHtml, csvCell } from '../templates';
 
 // Build URL with query params
 const buildUrl = (baseUrl: string, params: Record<string, string | undefined>): string => {
@@ -34,7 +35,10 @@ export const usersList = async (req: Request, res: Response): Promise<void> => {
     const search = (req.query.search as string) || '';
     const role = (req.query.role as string) || 'all';
     const status = (req.query.status as string) || 'all';
-    const sortBy = (req.query.sortBy as string) || 'createdAt';
+    // Only the fields offered in the sort dropdown
+    const sortBy = ['createdAt', 'lastLoginAt', 'email', 'firstName'].includes(req.query.sortBy as string)
+      ? (req.query.sortBy as string)
+      : 'createdAt';
     const sortOrder = (req.query.sortOrder as string) || 'desc';
     const dateFrom = req.query.dateFrom as string;
     const dateTo = req.query.dateTo as string;
@@ -44,9 +48,9 @@ export const usersList = async (req: Request, res: Response): Promise<void> => {
 
     if (search) {
       query.$or = [
-        { email: { $regex: search, $options: 'i' } },
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: escapeRegex(search), $options: 'i' } },
+        { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+        { lastName: { $regex: escapeRegex(search), $options: 'i' } },
       ];
     }
 
@@ -182,11 +186,11 @@ export const usersList = async (req: Request, res: Response): Promise<void> => {
                   <td class="table-cell">
                     <div class="flex items-center gap-3">
                       <div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
-                        ${(user.firstName?.[0] || '') + (user.lastName?.[0] || '')}
+                        ${escapeHtml((user.firstName?.[0] || '') + (user.lastName?.[0] || ''))}
                       </div>
                       <div>
-                        <p class="font-medium">${user.firstName} ${user.lastName}</p>
-                        <p class="text-xs text-muted-foreground">${user.email}</p>
+                        <p class="font-medium">${escapeHtml(user.firstName)} ${escapeHtml(user.lastName)}</p>
+                        <p class="text-xs text-muted-foreground">${escapeHtml(user.email)}</p>
                       </div>
                     </div>
                   </td>
@@ -234,9 +238,9 @@ export const exportUsers = async (req: Request, res: Response): Promise<void> =>
 
     if (search) {
       query.$or = [
-        { email: { $regex: search, $options: 'i' } },
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: escapeRegex(search), $options: 'i' } },
+        { firstName: { $regex: escapeRegex(search), $options: 'i' } },
+        { lastName: { $regex: escapeRegex(search), $options: 'i' } },
       ];
     }
 
@@ -263,7 +267,7 @@ export const exportUsers = async (req: Request, res: Response): Promise<void> =>
       new Date(user.createdAt).toISOString(),
     ]);
 
-    const csv = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+    const csv = [headers.join(','), ...rows.map(row => row.map(csvCell).join(','))].join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="users-${new Date().toISOString().split('T')[0]}.csv"`);

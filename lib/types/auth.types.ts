@@ -38,6 +38,13 @@ export interface ChangePasswordData {
   newPassword: string;
 }
 
+export interface ChangePasswordResult {
+  /** Instance credentials re-encrypted for the new password */
+  credentialsReencrypted?: number;
+  /** Instance credentials that couldn't be decrypted before the change and need re-entering */
+  credentialsNotReencrypted?: number;
+}
+
 export interface DeleteAccountData {
   password: string;
   confirmDelete: 'DELETE';

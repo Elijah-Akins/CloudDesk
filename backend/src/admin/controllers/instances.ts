@@ -7,7 +7,8 @@ import { Request, Response } from 'express';
 import { Instance } from '../../models/Instance';
 import { Session } from '../../models/Session';
 import { logger } from '../../utils/logger';
-import { renderPage, filterBar, pagination, emptyState } from '../templates';
+import { escapeRegex } from '../../utils/helpers';
+import { renderPage, filterBar, pagination, emptyState, escapeHtml } from '../templates';
 
 // Build URL with query params
 const buildUrl = (baseUrl: string, params: Record<string, string | undefined>): string => {
@@ -32,7 +33,10 @@ export const instancesList = async (req: Request, res: Response): Promise<void> 
 
     const search = (req.query.search as string) || '';
     const provider = (req.query.provider as string) || 'all';
-    const sortBy = (req.query.sortBy as string) || 'createdAt';
+    // Only the fields offered in the sort dropdown
+    const sortBy = ['createdAt', 'name', 'host'].includes(req.query.sortBy as string)
+      ? (req.query.sortBy as string)
+      : 'createdAt';
     const sortOrder = (req.query.sortOrder as string) || 'desc';
 
     // Build query
@@ -40,8 +44,8 @@ export const instancesList = async (req: Request, res: Response): Promise<void> 
 
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { host: { $regex: search, $options: 'i' } },
+        { name: { $regex: escapeRegex(search), $options: 'i' } },
+        { host: { $regex: escapeRegex(search), $options: 'i' } },
       ];
     }
 
@@ -95,7 +99,7 @@ export const instancesList = async (req: Request, res: Response): Promise<void> 
           ${providerStats.map(p => `
             <div class="text-center px-4 py-2 bg-muted rounded-lg">
               <p class="text-2xl font-bold">${p.count}</p>
-              <p class="text-xs text-muted-foreground">${p._id}</p>
+              <p class="text-xs text-muted-foreground">${escapeHtml(p._id)}</p>
             </div>
           `).join('')}
         </div>
@@ -151,22 +155,22 @@ export const instancesList = async (req: Request, res: Response): Promise<void> 
                 <tr class="hover:bg-muted/50 transition-colors">
                   <td class="table-cell">
                     <div>
-                      <p class="font-medium">${instance.name}</p>
+                      <p class="font-medium">${escapeHtml(instance.name)}</p>
                       <p class="text-xs text-muted-foreground font-mono">${instance._id}</p>
                     </div>
                   </td>
                   <td class="table-cell">
                     <div>
-                      <p class="text-sm">${owner?.firstName || ''} ${owner?.lastName || ''}</p>
-                      <p class="text-xs text-muted-foreground">${owner?.email || 'Unknown'}</p>
+                      <p class="text-sm">${escapeHtml(owner?.firstName)} ${escapeHtml(owner?.lastName)}</p>
+                      <p class="text-xs text-muted-foreground">${escapeHtml(owner?.email || 'Unknown')}</p>
                     </div>
                   </td>
                   <td class="table-cell">
-                    <code class="text-xs bg-muted px-2 py-1 rounded">${instance.host}:${instance.port}</code>
+                    <code class="text-xs bg-muted px-2 py-1 rounded">${escapeHtml(instance.host)}:${escapeHtml(instance.port)}</code>
                   </td>
                   <td class="table-cell">
                     <span class="px-2 py-1 text-xs rounded-full bg-status-info/10 text-status-info font-medium">
-                      ${instance.provider.toUpperCase()}
+                      ${escapeHtml(instance.provider.toUpperCase())}
                     </span>
                   </td>
                   <td class="table-cell font-medium">${sessionCount}</td>

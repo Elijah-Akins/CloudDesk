@@ -7,6 +7,8 @@ const PBKDF2_ITERATIONS = 100000;
 const SALT_LENGTH = 16;
 const IV_LENGTH_GCM = 12;
 const KEY_LENGTH_BITS = 256;
+const AUTH_TAG_LENGTH = 16;
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 class EncryptionService {
   private readonly algorithm: string;
@@ -129,6 +131,34 @@ class EncryptionService {
       logger.error('Client-side decryption failed:', error);
       throw new Error('Failed to decrypt with password - incorrect password or corrupted data');
     }
+  }
+
+  /**
+   * Encrypt in the client-side format (the inverse of decryptWithPassword and of
+   * the frontend's encryptWithPassword). Used to re-encrypt stored credentials
+   * when the account password changes.
+   */
+  encryptWithPassword(plaintext: string, password: string): string {
+    const salt = crypto.randomBytes(SALT_LENGTH);
+    const iv = crypto.randomBytes(IV_LENGTH_GCM);
+    const key = crypto.pbkdf2Sync(password, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS / 8, 'sha256');
+
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+
+    // Same layout as WebCrypto's AES-GCM output: ciphertext followed by the auth tag
+    return Buffer.concat([salt, iv, ciphertext, cipher.getAuthTag()]).toString('base64');
+  }
+
+  /**
+   * Whether a value has the shape of client-side encrypted data (base64 of
+   * salt + iv + ciphertext + tag). Plain SSH keys and passwords don't.
+   */
+  isClientEncrypted(value: string): boolean {
+    if (!BASE64_PATTERN.test(value)) {
+      return false;
+    }
+    return Buffer.from(value, 'base64').length > SALT_LENGTH + IV_LENGTH_GCM + AUTH_TAG_LENGTH;
   }
 
   /**

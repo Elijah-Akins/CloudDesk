@@ -6,6 +6,7 @@ import { VNCViewer } from '@/components/desktop';
 import { PageLoader } from '@/components/ui';
 import { useSessionStore, useAuthStore } from '@/lib/stores';
 import { ROUTES } from '@/lib/utils/constants';
+import { getLoginUrl } from '@/lib/utils/helpers';
 
 export default function DesktopPage() {
   const params = useParams();
@@ -22,7 +23,7 @@ export default function DesktopPage() {
 
   useEffect(() => {
     if (isInitialized && !isAuthenticated) {
-      router.push(ROUTES.LOGIN);
+      router.push(getLoginUrl(window.location.pathname));
     }
   }, [isInitialized, isAuthenticated, router]);
 
@@ -72,10 +73,11 @@ export default function DesktopPage() {
 
   // Check if current user is the session owner (default to true for backwards compatibility)
   const isOwner = currentSession?.isOwner !== false;
+  const viewOnly = !isOwner && currentSession?.permissions !== 'control';
 
   return (
     <div className="h-screen bg-black">
-      <VNCViewer sessionId={sessionId} websocketUrl={websocketUrl} isOwner={isOwner} />
+      <VNCViewer sessionId={sessionId} websocketUrl={websocketUrl} isOwner={isOwner} viewOnly={viewOnly} />
     </div>
   );
 }

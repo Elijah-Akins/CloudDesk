@@ -272,17 +272,6 @@ class PortForwardingService extends EventEmitter {
   }
 
   /**
-   * Cleanup all forwards for an instance
-   */
-  cleanupForInstance(instanceId: string): void {
-    for (const [id, _forward] of this.activeForwards) {
-      // In production, check if forward belongs to instance
-      // For now, we'd need to track this separately
-      this.stopForward(id);
-    }
-  }
-
-  /**
    * Cleanup all forwards
    */
   cleanup(): void {

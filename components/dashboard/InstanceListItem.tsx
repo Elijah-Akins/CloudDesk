@@ -11,6 +11,7 @@ import { InstanceExpandedDetails } from './InstanceExpandedDetails';
 import { PreflightCheckModal, SoftwareTemplatesModal, FileBrowserModal, DatabaseModal, PortForwardModal, TerminalModal } from '@/components/instances';
 import { useSessionStore, useInstanceStore, toast } from '@/lib/stores';
 import { formatRelativeTime } from '@/lib/utils/helpers';
+import { encryptWithPassword } from '@/lib/utils/crypto';
 import { ROUTES, SUCCESS_MESSAGES, ERROR_MESSAGES, CLOUD_PROVIDERS, AUTH_TYPES } from '@/lib/utils/constants';
 
 interface InstanceListItemProps {
@@ -45,6 +46,7 @@ export function InstanceListItem({ instance, onDelete }: InstanceListItemProps) 
   const [connectPassword, setConnectPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [configPassword, setConfigPassword] = useState('');
   const [showPreflightModal, setShowPreflightModal] = useState(false);
   const [showSoftwareModal, setShowSoftwareModal] = useState(false);
   const [showFileBrowserModal, setShowFileBrowserModal] = useState(false);
@@ -127,6 +129,7 @@ export function InstanceListItem({ instance, onDelete }: InstanceListItemProps) 
       credential: '',
       tags: instance.tags?.join(', ') || '',
     });
+    setConfigPassword('');
     setShowConfigModal(true);
   };
 
@@ -144,7 +147,14 @@ export function InstanceListItem({ instance, onDelete }: InstanceListItemProps) 
       };
 
       if (formData.credential) {
-        updateData.credential = formData.credential;
+        if (!configPassword) {
+          toast.error('Enter your account password to encrypt the new credential');
+          return;
+        }
+        // Credentials are stored encrypted with the account password, exactly as
+        // the full instance form does it; the server verifies the password
+        updateData.credential = await encryptWithPassword(formData.credential, configPassword);
+        updateData.password = configPassword;
       }
 
       await updateInstance(instance.id, updateData);
@@ -473,6 +483,19 @@ export function InstanceListItem({ instance, onDelete }: InstanceListItemProps) 
               />
             )}
           </div>
+
+          {formData.credential && (
+            <div>
+              <label className="text-sm text-muted-foreground">Your account password</label>
+              <Input
+                type="password"
+                value={configPassword}
+                onChange={(e) => setConfigPassword(e.target.value)}
+                placeholder="Needed to encrypt the new credential"
+                autoComplete="current-password"
+              />
+            </div>
+          )}
 
           <div>
             <label className="text-sm text-muted-foreground">Tags (comma-separated)</label>

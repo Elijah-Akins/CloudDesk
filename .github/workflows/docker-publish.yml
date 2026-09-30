@@ -167,8 +167,10 @@ jobs:
           labels: ${{ steps.meta-ghcr.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Empty NEXT_PUBLIC_API_URL = same-origin API calls (endpoint paths
+          # already start with /api/); the reverse proxy routes /api and /vnc
           build-args: |
-            NEXT_PUBLIC_API_URL=/api
+            NEXT_PUBLIC_API_URL=
             NEXT_PUBLIC_APP_NAME=CloudDesk
 
   build-session-controller:
@@ -321,7 +323,7 @@ jobs:
           generate_release_notes: true
           files: |
             docker-compose.selfhosted.yml
-            .env.selfhosted.example
+            backend/.env.selfhosted.example
             SELF_HOSTING.md
             helm/clouddesk/Chart.yaml
             helm/clouddesk/values.yaml

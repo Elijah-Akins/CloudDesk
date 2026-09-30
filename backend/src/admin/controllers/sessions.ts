@@ -6,7 +6,7 @@
 import { Request, Response } from 'express';
 import { Session } from '../../models/Session';
 import { logger } from '../../utils/logger';
-import { renderPage, filterBar, pagination, emptyState } from '../templates';
+import { renderPage, filterBar, pagination, emptyState, escapeHtml } from '../templates';
 import { getSessionAnalytics } from '../services/analytics';
 
 // Build URL with query params
@@ -45,7 +45,10 @@ export const sessionsList = async (req: Request, res: Response): Promise<void> =
     const status = (req.query.status as string) || 'all';
     const dateFrom = req.query.dateFrom as string;
     const dateTo = req.query.dateTo as string;
-    const sortBy = (req.query.sortBy as string) || 'createdAt';
+    // Only the fields offered in the sort dropdown
+    const sortBy = ['createdAt', 'connectionStartedAt', 'status'].includes(req.query.sortBy as string)
+      ? (req.query.sortBy as string)
+      : 'createdAt';
     const sortOrder = (req.query.sortOrder as string) || 'desc';
 
     // Build query
@@ -205,24 +208,24 @@ export const sessionsList = async (req: Request, res: Response): Promise<void> =
                 <tr class="hover:bg-muted/50 transition-colors">
                   <td class="table-cell">
                     <div>
-                      <p class="font-medium">${user?.firstName || ''} ${user?.lastName || ''}</p>
-                      <p class="text-xs text-muted-foreground">${user?.email || 'Unknown'}</p>
+                      <p class="font-medium">${escapeHtml(user?.firstName)} ${escapeHtml(user?.lastName)}</p>
+                      <p class="text-xs text-muted-foreground">${escapeHtml(user?.email || 'Unknown')}</p>
                     </div>
                   </td>
                   <td class="table-cell">
                     <div>
-                      <p class="text-sm">${instance?.name || 'Unknown'}</p>
-                      <code class="text-xs text-muted-foreground">${instance?.host || '-'}</code>
+                      <p class="text-sm">${escapeHtml(instance?.name || 'Unknown')}</p>
+                      <code class="text-xs text-muted-foreground">${escapeHtml(instance?.host || '-')}</code>
                     </div>
                   </td>
                   <td class="table-cell">
                     <div>
                       <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-${statusColor}/10 text-${statusColor}">
                         <span class="w-1.5 h-1.5 rounded-full bg-${statusColor} ${session.status === 'connected' ? 'animate-pulse' : ''}"></span>
-                        ${session.status}
+                        ${escapeHtml(session.status)}
                       </span>
                       ${session.errorMessage ? `
-                        <p class="text-xs text-status-error mt-1 max-w-[200px] truncate" title="${session.errorMessage}">${session.errorMessage}</p>
+                        <p class="text-xs text-status-error mt-1 max-w-[200px] truncate" title="${escapeHtml(session.errorMessage)}">${escapeHtml(session.errorMessage)}</p>
                       ` : ''}
                     </div>
                   </td>

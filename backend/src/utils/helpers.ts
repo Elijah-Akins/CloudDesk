@@ -126,6 +126,12 @@ export const findAvailablePort = (
 };
 
 /**
+ * Escape a string for literal use inside a RegExp / MongoDB $regex, so user
+ * search input can't inject patterns (including catastrophic backtracking)
+ */
+export const escapeRegex = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
  * Sanitize string for safe logging (remove sensitive data patterns)
  */
 export const sanitizeForLogging = (str: string): string => {
@@ -265,6 +271,7 @@ export default {
   retryWithBackoff,
   isPortAvailable,
   findAvailablePort,
+  escapeRegex,
   sanitizeForLogging,
   maskIpAddress,
   isValidSSHKey,

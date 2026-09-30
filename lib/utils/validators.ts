@@ -119,9 +119,9 @@ export const updateInstanceSchema = z.object({
   authType: z
     .enum(['key', 'password'])
     .optional(),
+  // Empty means "keep the existing credential"
   credential: z
     .string()
-    .min(1, 'Credential is required')
     .optional(),
   tags: z
     .array(z.string().min(VALIDATION.TAG.MIN_LENGTH).max(VALIDATION.TAG.MAX_LENGTH))

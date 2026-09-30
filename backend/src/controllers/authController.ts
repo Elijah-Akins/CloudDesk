@@ -106,11 +106,11 @@ export const changePassword = asyncHandler(async (req: Request, res: Response): 
   const ipAddress = getClientIp(req);
   const userAgent = getUserAgent(req);
 
-  await authService.changePassword(userId, currentPassword, newPassword, ipAddress, userAgent);
+  const credentials = await authService.changePassword(userId, currentPassword, newPassword, ipAddress, userAgent);
 
   res.status(HTTP_STATUS.OK).json({
     success: true,
-    data: { message: 'Password changed successfully' },
+    data: { message: 'Password changed successfully', ...credentials },
   });
 });
 

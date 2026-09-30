@@ -29,6 +29,14 @@ export interface ClipboardSyncResult {
  */
 class ClipboardService {
   /**
+   * X display numbers are interpolated into shell commands, so only accept small
+   * non-negative integers
+   */
+  private isValidDisplay(displayNumber: number): boolean {
+    return Number.isInteger(displayNumber) && displayNumber >= 0 && displayNumber <= 99;
+  }
+
+  /**
    * Check if clipboard tools are available on remote
    */
   async checkClipboardTools(client: Client): Promise<{
@@ -102,6 +110,10 @@ class ClipboardService {
     selection: 'clipboard' | 'primary' = 'clipboard'
   ): Promise<ClipboardSyncResult> {
     try {
+      if (!this.isValidDisplay(displayNumber)) {
+        return { success: false, error: 'Invalid display number' };
+      }
+
       // Set DISPLAY environment variable for the VNC session
       const display = `:${displayNumber}`;
       const selectionFlag = selection === 'clipboard' ? '-selection clipboard' : '-selection primary';
@@ -158,6 +170,10 @@ class ClipboardService {
     selection: 'clipboard' | 'primary' | 'both' = 'both'
   ): Promise<ClipboardSyncResult> {
     try {
+      if (!this.isValidDisplay(displayNumber)) {
+        return { success: false, error: 'Invalid display number' };
+      }
+
       const display = `:${displayNumber}`;
 
       // Escape content for shell (use base64 to avoid escaping issues)

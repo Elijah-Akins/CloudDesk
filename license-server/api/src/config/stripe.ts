@@ -20,3 +20,20 @@ export const STRIPE_PRICES = {
 export function getPriceId(tier: 'team' | 'enterprise', cycle: 'monthly' | 'yearly'): string {
   return STRIPE_PRICES[tier][cycle];
 }
+
+/**
+ * Reverse of getPriceId: find the plan for a Stripe price ID
+ * Returns null for prices that are not configured
+ */
+export function getPlanForPriceId(
+  priceId: string
+): { tier: 'team' | 'enterprise'; billingCycle: 'monthly' | 'yearly' } | null {
+  for (const tier of ['team', 'enterprise'] as const) {
+    for (const billingCycle of ['monthly', 'yearly'] as const) {
+      if (priceId && STRIPE_PRICES[tier][billingCycle] === priceId) {
+        return { tier, billingCycle };
+      }
+    }
+  }
+  return null;
+}

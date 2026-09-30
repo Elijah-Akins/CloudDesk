@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { env } from '../config/environment';
 import { User, IUserDocument } from '../models/User';
+import { Instance } from '../models/Instance';
 import { AuditLog } from '../models/AuditLog';
 import { AUDIT_ACTIONS, ERROR_CODES } from '../config/constants';
 import {
@@ -253,7 +255,7 @@ class AuthService {
     newPassword: string,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<void> {
+  ): Promise<{ credentialsReencrypted: number; credentialsNotReencrypted: number }> {
     const user = await User.findById(userId).select('+password');
     if (!user) {
       throw new NotFoundError('User not found', ERROR_CODES.USER_NOT_FOUND);
@@ -273,6 +275,10 @@ class AuthService {
       throw new ValidationError('Current password is incorrect');
     }
 
+    // Instance credentials are encrypted with a key derived from the account
+    // password; move them to the new password first, or they become unreadable
+    const credentials = await this.reencryptInstanceCredentials(userId, currentPassword, newPassword);
+
     // Update password
     user.password = newPassword;
 
@@ -287,10 +293,58 @@ class AuthService {
       AUDIT_ACTIONS.PASSWORD_CHANGE,
       'success',
       ipAddress,
-      userAgent
+      userAgent,
+      { ...credentials }
     );
 
-    logger.info(`Password changed for user: ${user.email}`);
+    logger.info(`Password changed for user: ${user.email}`, credentials);
+    return credentials;
+  }
+
+  /**
+   * Re-encrypt every stored instance credential for a new account password.
+   * Credentials that already open with the new password (left over from an
+   * interrupted earlier attempt) are skipped; ones that open with neither are
+   * left untouched and counted, since they were unusable already.
+   */
+  private async reencryptInstanceCredentials(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ credentialsReencrypted: number; credentialsNotReencrypted: number }> {
+    const instances = await Instance.find({ userId }).select('+encryptedCredential');
+    const updates: Array<{ id: mongoose.Types.ObjectId; encryptedCredential: string }> = [];
+    let credentialsNotReencrypted = 0;
+
+    for (const instance of instances) {
+      let plaintext: string;
+      try {
+        plaintext = instance.getFullyDecryptedCredential(currentPassword);
+      } catch {
+        try {
+          instance.getFullyDecryptedCredential(newPassword);
+        } catch {
+          credentialsNotReencrypted++;
+          logger.warn('Instance credential could not be re-encrypted for the new password', {
+            instanceId: instance._id.toString(),
+          });
+        }
+        continue;
+      }
+
+      instance.setPasswordEncryptedCredential(plaintext, newPassword);
+      updates.push({ id: instance._id, encryptedCredential: instance.encryptedCredential });
+    }
+
+    if (updates.length > 0) {
+      await Instance.bulkWrite(
+        updates.map(({ id, encryptedCredential }) => ({
+          updateOne: { filter: { _id: id }, update: { $set: { encryptedCredential } } },
+        }))
+      );
+    }
+
+    return { credentialsReencrypted: updates.length, credentialsNotReencrypted };
   }
 
   /**

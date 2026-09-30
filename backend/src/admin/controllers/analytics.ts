@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 import { logger } from '../../utils/logger';
-import { renderPage } from '../templates';
+import { renderPage, escapeHtml } from '../templates';
 import {
   getServerMetrics,
   formatBytes,
@@ -225,8 +225,8 @@ export const analyticsPage = async (_req: Request, res: Response): Promise<void>
                   <div class="flex items-center gap-2">
                     <span class="w-6 h-6 rounded bg-border flex items-center justify-center text-xs">${index + 1}</span>
                     <div>
-                      <p class="text-sm font-medium">${item.instance?.name || 'Unknown'}</p>
-                      <p class="text-xs text-muted-foreground">${item.instance?.host || ''}</p>
+                      <p class="text-sm font-medium">${escapeHtml(item.instance?.name || 'Unknown')}</p>
+                      <p class="text-xs text-muted-foreground">${escapeHtml(item.instance?.host)}</p>
                     </div>
                   </div>
                   <span class="text-sm font-medium">${item.sessionCount} sessions</span>
@@ -247,8 +247,8 @@ export const analyticsPage = async (_req: Request, res: Response): Promise<void>
                 <div class="flex items-center gap-3">
                   <span class="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">${index + 1}</span>
                   <div>
-                    <p class="font-medium">${item.user?.firstName || ''} ${item.user?.lastName || ''}</p>
-                    <p class="text-xs text-muted-foreground">${item.user?.email || 'Unknown'}</p>
+                    <p class="font-medium">${escapeHtml(item.user?.firstName)} ${escapeHtml(item.user?.lastName)}</p>
+                    <p class="text-xs text-muted-foreground">${escapeHtml(item.user?.email || 'Unknown')}</p>
                   </div>
                 </div>
                 <span class="font-medium">${item.instanceCount} instances</span>
@@ -265,8 +265,8 @@ export const analyticsPage = async (_req: Request, res: Response): Promise<void>
                 <div class="flex items-center gap-3">
                   <span class="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">${index + 1}</span>
                   <div>
-                    <p class="font-medium">${item.user?.firstName || ''} ${item.user?.lastName || ''}</p>
-                    <p class="text-xs text-muted-foreground">${item.user?.email || 'Unknown'}</p>
+                    <p class="font-medium">${escapeHtml(item.user?.firstName)} ${escapeHtml(item.user?.lastName)}</p>
+                    <p class="text-xs text-muted-foreground">${escapeHtml(item.user?.email || 'Unknown')}</p>
                   </div>
                 </div>
                 <span class="font-medium">${item.sessionCount} sessions</span>

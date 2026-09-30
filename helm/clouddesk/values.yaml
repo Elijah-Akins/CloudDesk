@@ -50,7 +50,8 @@ frontend:
   tolerations: []
   affinity: {}
   env:
-    NEXT_PUBLIC_API_URL: ""  # Will be set from ingress
+    # No effect at runtime: Next.js inlines NEXT_PUBLIC_* when the image is built
+    NEXT_PUBLIC_API_URL: ""
 
 # Session Controller settings
 sessionController:
@@ -137,6 +138,8 @@ ingress:
   className: nginx
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # ingress-nginx proxies WebSocket upgrades natively; the long timeouts
+    # keep idle VNC sessions (/vnc) from being cut off
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/websocket-services: "clouddesk-backend"
@@ -148,6 +151,10 @@ ingress:
           service: frontend
         - path: /api
           pathType: Prefix
+          service: backend
+        # VNC WebSocket (exact match: /vnc.html is a frontend page)
+        - path: /vnc
+          pathType: Exact
           service: backend
         - path: /socket.io
           pathType: Prefix

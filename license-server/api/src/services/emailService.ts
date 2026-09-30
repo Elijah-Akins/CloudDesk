@@ -6,12 +6,21 @@ import { logger } from '../utils/logger';
 // Create transporter (use test account in development)
 let transporter: nodemailer.Transporter | null = null;
 
-async function getTransporter(): Promise<nodemailer.Transporter> {
+/**
+ * Get the mail transporter, or null if email is not configured.
+ * Production never falls back to the public Ethereal test service, since
+ * emails contain license keys (customers can still see keys in the portal).
+ */
+async function getTransporter(): Promise<nodemailer.Transporter | null> {
   if (transporter) {
     return transporter;
   }
 
-  if (env.NODE_ENV === 'production' && env.SMTP_HOST) {
+  if (env.NODE_ENV === 'production') {
+    if (!env.SMTP_HOST) {
+      return null;
+    }
+
     transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT || 587,
@@ -40,6 +49,22 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
 }
 
 /**
+ * Escape user-provided text for interpolation into email HTML
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function logEmailNotConfigured(kind: string, email: string): void {
+  logger.error(`SMTP_HOST is not configured: ${kind} email to ${email} was not sent`);
+}
+
+/**
  * Send license key email
  */
 export async function sendLicenseKeyEmail(
@@ -50,6 +75,10 @@ export async function sendLicenseKeyEmail(
 ): Promise<void> {
   try {
     const transport = await getTransporter();
+    if (!transport) {
+      logEmailNotConfigured('License key', email);
+      return;
+    }
     const tierInfo = LICENSE_TIERS[tier];
 
     const html = `
@@ -65,7 +94,7 @@ export async function sendLicenseKeyEmail(
             <p style="color: #666; margin: 5px 0 0;">Your License Key</p>
           </div>
 
-          <p>Hi ${firstName},</p>
+          <p>Hi ${escapeHtml(firstName)},</p>
 
           <p>Thank you for subscribing to CloudDesk <strong>${tierInfo.name}</strong>! Your license key is ready.</p>
 
@@ -135,6 +164,10 @@ export async function sendPaymentFailedEmail(
 ): Promise<void> {
   try {
     const transport = await getTransporter();
+    if (!transport) {
+      logEmailNotConfigured('Payment failed', email);
+      return;
+    }
 
     const html = `
       <!DOCTYPE html>
@@ -147,7 +180,7 @@ export async function sendPaymentFailedEmail(
             <h1 style="color: #000; margin: 0;">CloudDesk</h1>
           </div>
 
-          <p>Hi ${firstName},</p>
+          <p>Hi ${escapeHtml(firstName)},</p>
 
           <p>We were unable to process your payment for CloudDesk. Your license has been temporarily suspended.</p>
 
@@ -197,6 +230,10 @@ export async function sendWelcomeEmail(
 ): Promise<void> {
   try {
     const transport = await getTransporter();
+    if (!transport) {
+      logEmailNotConfigured('Welcome', email);
+      return;
+    }
 
     const html = `
       <!DOCTYPE html>
@@ -209,7 +246,7 @@ export async function sendWelcomeEmail(
             <h1 style="color: #000; margin: 0;">Welcome to CloudDesk</h1>
           </div>
 
-          <p>Hi ${firstName},</p>
+          <p>Hi ${escapeHtml(firstName)},</p>
 
           <p>Welcome to CloudDesk! Your account has been created successfully.</p>
 

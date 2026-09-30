@@ -266,6 +266,21 @@ router.post(
 );
 
 // ============================================
+// Browser Terminal Routes
+// ============================================
+
+/**
+ * @route   POST /api/instances/:id/terminal/execute
+ * @desc    Run a shell command on the instance (browser terminal)
+ * @access  Private
+ */
+router.post(
+  '/:id/terminal/execute',
+  validateParams(objectIdParamSchema),
+  instanceFeaturesController.executeTerminalCommand
+);
+
+// ============================================
 // Port Forwarding Routes
 // ============================================
 

@@ -17,11 +17,12 @@ export const connect = asyncHandler(async (req: Request, res: Response): Promise
   const ipAddress = getClientIp(req);
   const userAgent = getUserAgent(req);
 
-  // Debug logging
+  // Never log the body: it carries the account password used to decrypt credentials
   logger.info('Connect request received', {
-    body: req.body,
-    hasPassword: !!data.password,
+    userId,
     instanceId: data.instanceId,
+    desktopEnvironment: data.desktopEnvironment,
+    hasPassword: !!data.password,
   });
 
   if (!data.password) {
@@ -336,17 +337,29 @@ export const getRecoverableSessions = asyncHandler(async (req: Request, res: Res
 });
 
 /**
- * Get session health/recovery status
+ * Whether the session's desktop can still be reconnected to (used by the viewer's auto-reconnect)
  * GET /api/sessions/:sessionId/status
  */
 export const getSessionStatus = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const { userId } = (req as AuthRequest).user;
   const { sessionId } = req.params;
 
-  const status = await sessionRecoveryService.checkWorkerHealth(sessionId);
+  // Owner or invited viewer only
+  const session = await sessionService.getSessionById(userId, sessionId);
+  if (!session) {
+    res.status(HTTP_STATUS.NOT_FOUND).json({
+      success: false,
+      error: {
+        message: 'Session not found',
+        code: 'SESSION_NOT_FOUND',
+      },
+    });
+    return;
+  }
 
   res.status(HTTP_STATUS.OK).json({
     success: true,
-    data: status,
+    data: sessionService.getSessionHealth(session),
   });
 });
 

@@ -35,6 +35,8 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-adminpassword}
       MONGO_INITDB_DATABASE: clouddesk
+      # App user created by mongo-init.js (must match MONGODB_URI below)
+      MONGO_USERNAME: ${MONGO_USERNAME:-clouddesk}
       MONGO_PASSWORD: ${MONGO_PASSWORD:-clouddesk_app_password}
     # Ports not exposed - internal network only
     volumes:
@@ -77,7 +79,9 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_jwt_refresh_secret_change_in_production}
       JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-24h}
       JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev_encryption_key_32_chars_here}
+      # DEV ONLY default. The backend requires exactly 64 hex chars (32 bytes);
+      # generate a real key with: openssl rand -hex 32
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       ADMIN_SECRET: ${ADMIN_SECRET:-admin_secret}
       SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
       MAX_SESSIONS_PER_USER: ${MAX_SESSIONS_PER_USER:-5}

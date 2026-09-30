@@ -1,7 +1,9 @@
 // API Configuration
 // IMPORTANT: Use HTTPS in production to avoid mixed content errors
-// Set NEXT_PUBLIC_API_URL in .env.local or Vercel environment variables
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cldesk.duckdns.org';
+// Set NEXT_PUBLIC_API_URL in .env.local or Vercel environment variables.
+// Set it to an empty string when the API is served from the same origin as the
+// frontend (e.g. behind one reverse proxy); requests then use relative URLs.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://cldesk.duckdns.org';
 export const API_ENDPOINTS = {
   // Auth
   AUTH: {
@@ -40,6 +42,8 @@ export const API_ENDPOINTS = {
     PORT_FORWARD_STOP: (id: string, forwardId: string) => `/api/instances/${id}/port-forward/${forwardId}/stop`,
     PORT_FORWARD_LIST: (id: string) => `/api/instances/${id}/port-forward/list`,
     PORT_FORWARD_AVAILABLE_PORT: (id: string) => `/api/instances/${id}/port-forward/available-port`,
+    // Browser Terminal
+    TERMINAL_EXECUTE: (id: string) => `/api/instances/${id}/terminal/execute`,
   },
   // Sessions
   SESSIONS: {
@@ -52,7 +56,7 @@ export const API_ENDPOINTS = {
     ACTIVE: '/api/sessions/active',
     DISCONNECT_ALL: '/api/sessions/disconnect-all',
     // Clipboard Sync
-    CLIPBOARD_GET: (id: string) => `/api/sessions/${id}/clipboard`,
+    CLIPBOARD_GET: (id: string) => `/api/sessions/${id}/clipboard/get`,
     CLIPBOARD_SET: (id: string) => `/api/sessions/${id}/clipboard`,
   },
   // Users

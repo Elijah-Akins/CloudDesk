@@ -21,7 +21,14 @@ import { sshService } from './sshService';
 import { vncService } from './vncService';
 import { provisionService } from './provisionService';
 import { tunnelService } from './tunnelService';
-import { SessionInfo, SSHConfig } from '../types';
+import { sessionBridgeManager } from '../websocket/SessionBridge';
+import { SessionInfo, SSHConfig, TunnelInfo } from '../types';
+
+export interface SessionHealth {
+  isRecoverable: boolean;
+  status: string;
+  reason?: string;
+}
 
 class SessionService {
   private cleanupInterval: NodeJS.Timeout | null = null;
@@ -65,6 +72,8 @@ class SessionService {
     userAgent?: string
   ): Promise<SessionInfo> {
     let sshClient: Client | null = null;
+    let vncDisplayStarted: number | null = null;
+    let tunnelInfo: TunnelInfo | null = null;
 
     try {
       // Check for existing active session
@@ -111,6 +120,14 @@ class SessionService {
       // Establish SSH connection
       sshClient = await sshService.createConnection(sshConfig);
 
+      // The credential works. If it was stored without the password-based layer
+      // (older dashboard quick-edit), store it the proper way now.
+      if (instance.hasLegacyCredential()) {
+        instance.setPasswordEncryptedCredential(credential, userPassword);
+        await instance.save();
+        logger.info('Upgraded legacy instance credential encryption', { instanceId });
+      }
+
       // Check if VNC is installed, provision if not
       const vncInstalled = await vncService.isVNCInstalled(sshClient);
       const desktopInstalled = await vncService.isDesktopInstalled(sshClient, desktopEnvironment);
@@ -144,11 +161,12 @@ class SessionService {
       const vncInfo = await vncService.startVNCServer(sshClient, displayNumber, {
         desktop: desktopEnvironment,
       });
+      vncDisplayStarted = vncInfo.displayNumber;
 
       // Create SSH tunnel
       logVNC('creating_tunnel', instanceId);
 
-      const tunnelInfo = await tunnelService.createTunnel(
+      tunnelInfo = await tunnelService.createTunnel(
         sshClient,
         '127.0.0.1',
         vncInfo.port,
@@ -214,8 +232,16 @@ class SessionService {
         status: 'connected',
       };
     } catch (error) {
-      // Clean up on error
-      if (sshClient) {
+      // Clean up whatever was set up before the failure
+      if (sshClient && vncDisplayStarted !== null) {
+        await vncService.stopVNCServer(sshClient, vncDisplayStarted).catch((stopError) => {
+          logger.warn('Failed to stop VNC server after connect failure:', stopError);
+        });
+      }
+      if (tunnelInfo) {
+        // Closing the tunnel also ends its SSH connection
+        await tunnelService.closeTunnel(tunnelInfo.localPort);
+      } else if (sshClient) {
         sshService.closeConnection(sshClient);
       }
 
@@ -268,6 +294,9 @@ class SessionService {
     }
 
     try {
+      // Disconnect everyone watching the session
+      sessionBridgeManager.closeBridge(sessionId, 'Session ended by owner');
+
       // Kill VNC server via SSH before closing tunnel (tunnel has the SSH client)
       if (session.vncDisplayNumber) {
         await this.killVNCViaSSH(session.sshTunnelLocalPort, session.vncDisplayNumber);
@@ -334,6 +363,30 @@ class SessionService {
   }
 
   /**
+   * Whether a session's desktop can still be (re)connected to from this server
+   */
+  getSessionHealth(session: ISessionDocument): SessionHealth {
+    if (session.status !== 'connected' && session.status !== 'connecting') {
+      return {
+        isRecoverable: false,
+        status: session.status,
+        reason: session.errorMessage || 'This session has ended. Start a new session to reconnect.',
+      };
+    }
+
+    const tunnel = tunnelService.getTunnelBySession(session._id.toString());
+    if (!tunnel || !tunnelService.isTunnelHealthy(tunnel.localPort)) {
+      return {
+        isRecoverable: false,
+        status: 'unavailable',
+        reason: 'The connection to this desktop was lost. Start a new session to reconnect.',
+      };
+    }
+
+    return { isRecoverable: true, status: session.status };
+  }
+
+  /**
    * Get active sessions for a user
    */
   async getActiveSessions(userId: string): Promise<ISessionDocument[]> {
@@ -382,13 +435,30 @@ class SessionService {
    */
   async cleanupInactiveSessions(): Promise<number> {
     try {
+      // A session is in use while anyone has it open: keep those alive
+      const watchedSessionIds = sessionBridgeManager.getActiveSessions();
+      if (watchedSessionIds.length > 0) {
+        await Session.updateMany(
+          { _id: { $in: watchedSessionIds }, status: { $in: ['connecting', 'connected'] } },
+          { $set: { lastActivityAt: new Date() } }
+        );
+      }
+
       const inactiveSessions = await Session.findInactiveSessions(env.SESSION_TIMEOUT_MINUTES);
 
       let cleanedCount = 0;
 
       for (const session of inactiveSessions) {
         try {
-          // Close tunnel
+          const sessionId = session._id.toString();
+          sessionBridgeManager.closeBridge(sessionId, 'Session timed out due to inactivity');
+
+          // Stop the remote VNC server while the tunnel's SSH connection is still up
+          if (session.vncDisplayNumber) {
+            await this.killVNCViaSSH(session.sshTunnelLocalPort, session.vncDisplayNumber);
+          }
+
+          // Close tunnel (this also ends the SSH connection)
           await tunnelService.closeTunnel(session.sshTunnelLocalPort);
 
           // Mark session as disconnected

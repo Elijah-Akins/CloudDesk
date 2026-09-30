@@ -24,8 +24,8 @@ export function PublicHeader({ transparent = false }: PublicHeaderProps) {
   }, [checkAuth]);
 
   useEffect(() => {
+    // A non-transparent header is always rendered solid, so there's nothing to track
     if (!transparent) {
-      setScrolled(true);
       return;
     }
 

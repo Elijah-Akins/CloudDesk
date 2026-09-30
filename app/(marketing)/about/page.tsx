@@ -83,13 +83,13 @@ export default function AboutPage() {
                 Democratizing Remote Desktop Access
               </h2>
               <p className="text-lg text-muted-foreground mb-6">
-                Enterprise-grade remote desktop solutions have traditionally been expensive, complex, and locked to specific vendors. We're changing that.
+                Enterprise-grade remote desktop solutions have traditionally been expensive, complex, and locked to specific vendors. We&apos;re changing that.
               </p>
               <p className="text-lg text-muted-foreground mb-6">
                 CloudDesk is built on a simple principle: <span className="text-foreground font-medium">your cloud, your control</span>. We provide the bridge between your browser and your infrastructure, while you maintain complete ownership of your data and servers.
               </p>
               <p className="text-lg text-muted-foreground">
-                Whether you're a solo developer accessing a dev environment, or a team managing production servers, CloudDesk gives you secure, instant access from anywhere in the world.
+                Whether you&apos;re a solo developer accessing a dev environment, or a team managing production servers, CloudDesk gives you secure, instant access from anywhere in the world.
               </p>
             </div>
             <div className="relative">

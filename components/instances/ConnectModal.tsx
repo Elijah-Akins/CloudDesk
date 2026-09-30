@@ -28,12 +28,21 @@ export function ConnectModal({
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [isStarted, setIsStarted] = useState(false);
+  const [wasOpen, setWasOpen] = useState(isOpen);
 
-  useEffect(() => {
+  // Reset local form state when the modal closes (adjusting state during render
+  // rather than in an effect avoids an extra render pass)
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (!isOpen) {
       setIsStarted(false);
       setPassword('');
       setPasswordError('');
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen) {
       resetConnectionProgress();
     }
   }, [isOpen, resetConnectionProgress]);

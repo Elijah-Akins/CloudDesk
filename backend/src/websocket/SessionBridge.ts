@@ -1,15 +1,18 @@
 import net from 'net';
 import WebSocket from 'ws';
 import { logger } from '../utils/logger';
+import { RfbClientFilter } from './rfbClientFilter';
 
 export type ViewerPermission = 'view' | 'control';
 
-export interface SessionViewer {
+interface ViewerConnection {
   userId: string;
   ws: WebSocket;
+  tcp: net.Socket;
   permissions: ViewerPermission;
   joinedAt: Date;
   isOwner: boolean;
+  closed: boolean;
 }
 
 interface SessionBridgeOptions {
@@ -19,184 +22,164 @@ interface SessionBridgeOptions {
   ownerId: string;
 }
 
+const toBuffer = (data: WebSocket.RawData): Buffer => {
+  if (Buffer.isBuffer(data)) return data;
+  if (Array.isArray(data)) return Buffer.concat(data);
+  return Buffer.from(data);
+};
+
 /**
- * SessionBridge manages a single TCP connection to VNC that multiple WebSocket clients share.
+ * SessionBridge connects the WebSocket clients of one session to the VNC server
+ * behind the session's SSH tunnel.
  *
  * Architecture:
- * - One TCP connection per session (to the SSH tunnel -> VNC server)
- * - Multiple WebSocket clients can connect to the same bridge
- * - VNC frames from TCP are broadcast to ALL connected clients
- * - Input events are forwarded from clients with 'control' permission
- * - Owner always has 'control' permission
+ * - Each WebSocket client gets its own TCP connection through the tunnel, and so
+ *   its own RFB handshake and framebuffer state. The VNC server runs with
+ *   -AlwaysShared, so all clients see and share the same desktop, and a client
+ *   that reconnects starts a clean handshake.
+ * - The owner's stream is passed through untouched. Other participants' streams
+ *   go through an RfbClientFilter, which drops keyboard/pointer/clipboard/resize
+ *   input unless they currently have 'control' permission.
+ * - One connection per user: reconnecting (e.g. a reloaded tab) replaces the old one.
  */
 export class SessionBridge {
-  private sessionId: string;
-  private tcpSocket: net.Socket | null = null;
-  private viewers: Map<string, SessionViewer> = new Map();
-  private tunnelHost: string;
-  private tunnelPort: number;
-  private ownerId: string;
-  private isConnected: boolean = false;
+  readonly sessionId: string;
+  readonly tunnelPort: number;
+  private readonly tunnelHost: string;
+  private readonly ownerId: string;
+  private readonly onEmpty?: () => void;
+  private viewers: Map<string, ViewerConnection> = new Map();
 
-  constructor(options: SessionBridgeOptions) {
+  constructor(options: SessionBridgeOptions, onEmpty?: () => void) {
     this.sessionId = options.sessionId;
     this.tunnelHost = options.tunnelHost;
     this.tunnelPort = options.tunnelPort;
     this.ownerId = options.ownerId;
+    this.onEmpty = onEmpty;
   }
 
   /**
-   * Initialize the TCP connection to the VNC tunnel
+   * Connect a WebSocket client to the VNC server. Rejects if the tunnel can't be
+   * reached; the caller is responsible for closing the WebSocket in that case.
    */
-  async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.tcpSocket = net.createConnection({
-        host: this.tunnelHost,
-        port: this.tunnelPort,
-      });
-
-      this.tcpSocket.on('connect', () => {
-        logger.info(`[SessionBridge] TCP connection established for session ${this.sessionId}`);
-        this.isConnected = true;
-        resolve();
-      });
-
-      this.tcpSocket.on('data', (data: Buffer) => {
-        this.broadcastToViewers(data);
-      });
-
-      this.tcpSocket.on('error', (error) => {
-        logger.error(`[SessionBridge] TCP error for session ${this.sessionId}:`, error);
-        if (!this.isConnected) {
-          reject(error);
-        }
-      });
-
-      this.tcpSocket.on('close', () => {
-        logger.info(`[SessionBridge] TCP connection closed for session ${this.sessionId}`);
-        this.isConnected = false;
-        this.handleTcpClose();
-      });
-    });
-  }
-
-  /**
-   * Handle TCP connection close - notify all viewers
-   */
-  private handleTcpClose(): void {
-    // Close all WebSocket connections
-    for (const [_viewerId, viewer] of this.viewers) {
-      if (viewer.ws.readyState === WebSocket.OPEN) {
-        viewer.ws.close(1000, 'VNC connection closed');
-      }
-    }
-    this.viewers.clear();
-  }
-
-  /**
-   * Broadcast VNC data to all connected viewers
-   */
-  private broadcastToViewers(data: Buffer): void {
-    for (const [viewerId, viewer] of this.viewers) {
-      if (viewer.ws.readyState === WebSocket.OPEN) {
-        try {
-          viewer.ws.send(data);
-        } catch (error) {
-          logger.warn(`[SessionBridge] Failed to send data to viewer ${viewerId}:`, error);
-        }
-      }
-    }
-  }
-
-  /**
-   * Add a viewer to this session
-   */
-  addViewer(
+  async addViewer(
     userId: string,
     ws: WebSocket,
     permissions: ViewerPermission,
     isOwner: boolean = false
-  ): void {
-    // If this user already has a connection, close the old one
-    const existingViewer = this.viewers.get(userId);
-    if (existingViewer && existingViewer.ws !== ws) {
-      logger.info(`[SessionBridge] Closing existing connection for user ${userId}`);
-      if (existingViewer.ws.readyState === WebSocket.OPEN) {
-        existingViewer.ws.close(1000, 'New connection established');
-      }
+  ): Promise<void> {
+    const tcp = await this.openTunnelConnection();
+
+    // The client may have gone away while we were connecting
+    if (ws.readyState !== WebSocket.OPEN) {
+      tcp.destroy();
+      return;
     }
 
-    const viewer: SessionViewer = {
+    const existing = this.viewers.get(userId);
+    if (existing) {
+      logger.info(`[SessionBridge] Replacing existing connection for user ${userId}`);
+      this.closeViewer(existing, 1000, 'New connection established', false);
+    }
+
+    const viewer: ViewerConnection = {
       userId,
       ws,
+      tcp,
       permissions: isOwner ? 'control' : permissions, // Owner always has control
       joinedAt: new Date(),
       isOwner,
+      closed: false,
     };
-
     this.viewers.set(userId, viewer);
 
-    // Set up WebSocket event handlers for this viewer
-    ws.on('message', (data: WebSocket.Data) => {
-      this.handleViewerMessage(userId, data);
+    const filter = isOwner ? null : new RfbClientFilter(() => viewer.permissions === 'control');
+
+    tcp.on('data', (data: Buffer) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    });
+    tcp.on('close', () => this.closeViewer(viewer, 1000, 'VNC connection closed'));
+    tcp.on('error', (error) => {
+      logger.warn(`[SessionBridge] VNC connection error for viewer ${userId} in session ${this.sessionId}:`, error);
+      this.closeViewer(viewer, 1011, 'VNC connection error');
     });
 
-    ws.on('close', () => {
-      this.removeViewer(userId);
-    });
+    ws.on('message', (data: WebSocket.RawData) => {
+      if (viewer.closed) return;
+      const chunk = toBuffer(data);
 
+      if (!filter) {
+        tcp.write(chunk);
+        return;
+      }
+
+      try {
+        const allowed = filter.process(chunk);
+        if (allowed.length > 0) {
+          tcp.write(allowed);
+        }
+      } catch (error) {
+        logger.warn(`[SessionBridge] Closing viewer ${userId}: unparseable VNC client stream`, {
+          sessionId: this.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.closeViewer(viewer, 1008, 'Unsupported VNC client message');
+      }
+    });
+    ws.on('close', () => this.closeViewer(viewer));
     ws.on('error', (error) => {
       logger.error(`[SessionBridge] WebSocket error for viewer ${userId}:`, error);
-      this.removeViewer(userId);
+      this.closeViewer(viewer);
     });
 
-    logger.info(`[SessionBridge] Viewer ${userId} joined session ${this.sessionId} with ${permissions} permissions`);
+    logger.info(`[SessionBridge] Viewer ${userId} joined session ${this.sessionId} with ${viewer.permissions} permissions`);
+  }
 
-    // Notify other viewers about new participant
-    this.broadcastViewerUpdate();
+  private openTunnelConnection(): Promise<net.Socket> {
+    return new Promise((resolve, reject) => {
+      const socket = net.createConnection({ host: this.tunnelHost, port: this.tunnelPort });
+      const onError = (error: Error) => {
+        socket.destroy();
+        reject(error);
+      };
+      socket.once('error', onError);
+      socket.once('connect', () => {
+        socket.off('error', onError);
+        socket.setNoDelay(true);
+        resolve(socket);
+      });
+    });
   }
 
   /**
-   * Handle incoming message from a viewer
+   * Tear down one viewer's WebSocket and TCP connection. Safe to call repeatedly.
    */
-  private handleViewerMessage(userId: string, data: WebSocket.Data): void {
-    const viewer = this.viewers.get(userId);
-    if (!viewer) return;
+  private closeViewer(viewer: ViewerConnection, code?: number, reason?: string, notifyEmpty: boolean = true): void {
+    if (viewer.closed) return;
+    viewer.closed = true;
 
-    // Only forward input if viewer has control permission
-    if (viewer.permissions === 'control' && this.tcpSocket?.writable) {
-      this.tcpSocket.write(data as Buffer);
+    if (this.viewers.get(viewer.userId) === viewer) {
+      this.viewers.delete(viewer.userId);
     }
-    // View-only users' input is silently ignored
-  }
 
-  /**
-   * Remove a viewer from this session
-   */
-  removeViewer(userId: string): void {
-    const viewer = this.viewers.get(userId);
-    if (!viewer) return;
+    viewer.tcp.destroy();
 
-    this.viewers.delete(userId);
-    logger.info(`[SessionBridge] Viewer ${userId} left session ${this.sessionId}`);
+    if (viewer.ws.readyState === WebSocket.OPEN || viewer.ws.readyState === WebSocket.CONNECTING) {
+      try {
+        viewer.ws.close(code ?? 1000, reason);
+      } catch (error) {
+        logger.warn(`[SessionBridge] Error closing WebSocket for viewer ${viewer.userId}:`, error);
+        viewer.ws.terminate();
+      }
+    }
 
-    // If no viewers left and this isn't the owner, consider closing
-    // But we'll keep the bridge alive as long as the session exists
+    logger.info(`[SessionBridge] Viewer ${viewer.userId} left session ${this.sessionId}`);
 
-    // Notify remaining viewers about participant leaving
-    this.broadcastViewerUpdate();
-  }
-
-  /**
-   * Broadcast viewer list update to all connected clients
-   * NOTE: Disabled for now as sending JSON over VNC WebSocket breaks noVNC
-   * The frontend polls /api/sessions/:sessionId/viewers instead
-   */
-  private broadcastViewerUpdate(): void {
-    // Don't send JSON over VNC WebSocket - it breaks the RFB protocol
-    // The noVNC client expects only binary VNC data
-    // Viewer updates are fetched via HTTP polling instead
-    logger.debug(`[SessionBridge] Viewer count updated: ${this.viewers.size}`);
+    if (notifyEmpty && this.viewers.size === 0) {
+      this.onEmpty?.();
+    }
   }
 
   /**
@@ -231,36 +214,40 @@ export class SessionBridge {
   }
 
   /**
-   * Update a viewer's permissions
+   * Update a viewer's permissions; takes effect at their next VNC message
    */
   updateViewerPermissions(userId: string, permissions: ViewerPermission): boolean {
     const viewer = this.viewers.get(userId);
-    if (!viewer) return false;
-
-    // Can't change owner's permissions
-    if (viewer.isOwner) return false;
+    if (!viewer || viewer.isOwner) return false;
 
     viewer.permissions = permissions;
-    this.broadcastViewerUpdate();
+    logger.info(`[SessionBridge] Viewer ${userId} in session ${this.sessionId} now has ${permissions} permissions`);
     return true;
   }
 
   /**
-   * Kick a viewer from the session
+   * Disconnect a viewer from the session
    */
-  kickViewer(userId: string, reason: string = 'Kicked by session owner'): boolean {
+  kickViewer(userId: string, reason: string = 'Removed by session owner'): boolean {
     const viewer = this.viewers.get(userId);
-    if (!viewer) return false;
+    if (!viewer || viewer.isOwner) return false;
 
-    // Can't kick the owner
-    if (viewer.isOwner) return false;
-
-    if (viewer.ws.readyState === WebSocket.OPEN) {
-      viewer.ws.close(1000, reason);
-    }
-    this.viewers.delete(userId);
-    this.broadcastViewerUpdate();
+    this.closeViewer(viewer, 1000, reason);
     return true;
+  }
+
+  /**
+   * Disconnect every participant except the owner (e.g. collaboration turned off)
+   */
+  kickAllGuests(reason: string): number {
+    let kicked = 0;
+    for (const viewer of Array.from(this.viewers.values())) {
+      if (!viewer.isOwner) {
+        this.closeViewer(viewer, 1000, reason);
+        kicked++;
+      }
+    }
+    return kicked;
   }
 
   /**
@@ -271,37 +258,13 @@ export class SessionBridge {
   }
 
   /**
-   * Check if the bridge is connected to VNC
+   * Close all connections to this session
    */
-  isVncConnected(): boolean {
-    return this.isConnected;
-  }
-
-  /**
-   * Close the bridge and all connections
-   */
-  close(): void {
+  close(reason: string = 'Session ended'): void {
     logger.info(`[SessionBridge] Closing bridge for session ${this.sessionId}`);
-
-    // Close all viewer WebSocket connections
-    for (const [, viewer] of this.viewers) {
-      if (viewer.ws.readyState === WebSocket.OPEN) {
-        viewer.ws.close(1000, 'Session ended');
-      }
+    for (const viewer of Array.from(this.viewers.values())) {
+      this.closeViewer(viewer, 1000, reason, false);
     }
-    this.viewers.clear();
-
-    // Close TCP connection
-    if (this.tcpSocket) {
-      try {
-        this.tcpSocket.destroy();
-      } catch (error) {
-        logger.warn(`[SessionBridge] Error destroying TCP socket:`, error);
-      }
-      this.tcpSocket = null;
-    }
-
-    this.isConnected = false;
   }
 }
 
@@ -312,18 +275,21 @@ export class SessionBridgeManager {
   private bridges: Map<string, SessionBridge> = new Map();
 
   /**
-   * Get or create a bridge for a session
+   * Get or create the bridge for a session
    */
-  async getOrCreateBridge(options: SessionBridgeOptions): Promise<SessionBridge> {
-    let bridge = this.bridges.get(options.sessionId);
-
-    if (bridge && bridge.isVncConnected()) {
-      return bridge;
+  getOrCreateBridge(options: SessionBridgeOptions): SessionBridge {
+    const existing = this.bridges.get(options.sessionId);
+    if (existing && existing.tunnelPort === options.tunnelPort) {
+      return existing;
     }
+    existing?.close();
 
-    // Create new bridge
-    bridge = new SessionBridge(options);
-    await bridge.connect();
+    const bridge = new SessionBridge(options, () => {
+      // Drop bridges nobody is connected to; the next viewer creates a new one
+      if (this.bridges.get(options.sessionId) === bridge) {
+        this.bridges.delete(options.sessionId);
+      }
+    });
     this.bridges.set(options.sessionId, bridge);
 
     logger.info(`[SessionBridgeManager] Created bridge for session ${options.sessionId}`);
@@ -340,20 +306,22 @@ export class SessionBridgeManager {
   /**
    * Close and remove a bridge
    */
-  closeBridge(sessionId: string): void {
+  closeBridge(sessionId: string, reason?: string): void {
     const bridge = this.bridges.get(sessionId);
     if (bridge) {
-      bridge.close();
       this.bridges.delete(sessionId);
+      bridge.close(reason);
       logger.info(`[SessionBridgeManager] Closed bridge for session ${sessionId}`);
     }
   }
 
   /**
-   * Get all active session IDs
+   * Get IDs of sessions that currently have at least one connected viewer
    */
   getActiveSessions(): string[] {
-    return Array.from(this.bridges.keys());
+    return Array.from(this.bridges.values())
+      .filter((bridge) => bridge.getViewerCount() > 0)
+      .map((bridge) => bridge.sessionId);
   }
 
   /**
@@ -371,8 +339,8 @@ export class SessionBridgeManager {
    * Close all bridges
    */
   closeAll(): void {
-    for (const [_sessionId, bridge] of this.bridges) {
-      bridge.close();
+    for (const bridge of this.bridges.values()) {
+      bridge.close('Server shutting down');
     }
     this.bridges.clear();
     logger.info('[SessionBridgeManager] All bridges closed');

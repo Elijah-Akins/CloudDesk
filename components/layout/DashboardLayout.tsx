@@ -7,8 +7,7 @@ import { Sidebar } from './Sidebar';
 import { ToastContainer } from '@/components/ui';
 import { useAuthStore, useSessionStore, useUIStore } from '@/lib/stores';
 import { PageLoader } from '@/components/ui';
-import { ROUTES } from '@/lib/utils/constants';
-import { cn } from '@/lib/utils/helpers';
+import { cn, getLoginUrl } from '@/lib/utils/helpers';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -26,7 +25,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   useEffect(() => {
     if (isInitialized && !isAuthenticated) {
-      router.push(ROUTES.LOGIN);
+      router.push(getLoginUrl(`${window.location.pathname}${window.location.search}`));
     }
   }, [isInitialized, isAuthenticated, router]);
 

@@ -34,7 +34,7 @@ interface InstanceActions {
   createInstance: (data: CreateInstanceData) => Promise<Instance>;
   updateInstance: (id: string, data: UpdateInstanceData) => Promise<Instance>;
   deleteInstance: (id: string) => Promise<void>;
-  testConnection: (id: string) => Promise<TestConnectionResult>;
+  testConnection: (id: string, password: string) => Promise<TestConnectionResult>;
   setCurrentInstance: (instance: Instance | null) => void;
   setFilters: (filters: Partial<InstanceQuery>) => void;
   clearFilters: () => void;
@@ -142,10 +142,10 @@ export const useInstanceStore = create<InstanceStore>()((set, get) => ({
     }
   },
 
-  testConnection: async (id: string) => {
+  testConnection: async (id: string, password: string) => {
     set({ isTesting: true, error: null });
     try {
-      const result = await instanceService.testConnection(id);
+      const result = await instanceService.testConnection(id, password);
       set({ isTesting: false });
       return result;
     } catch (error) {

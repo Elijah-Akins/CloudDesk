@@ -480,7 +480,7 @@ export function LandingPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-foreground mb-1">Encrypted at Rest</h3>
-                  <p className="text-muted-foreground text-sm">Your SSH keys and passwords are encrypted before being stored. They're never saved as plaintext in our database.</p>
+                  <p className="text-muted-foreground text-sm">Your SSH keys and passwords are encrypted before being stored. They&apos;re never saved as plaintext in our database.</p>
                 </div>
               </div>
 

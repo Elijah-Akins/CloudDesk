@@ -14,7 +14,6 @@ import { Modal, Button, Input } from '@/components/ui';
 import { instanceService } from '@/lib/services/instance.service';
 import { toast } from '@/lib/stores';
 import { cn } from '@/lib/utils/helpers';
-import { API_BASE_URL } from '@/lib/utils/constants';
 
 interface TerminalModalProps {
   isOpen: boolean;
@@ -94,35 +93,22 @@ export function TerminalModal({
     setIsLoading(true);
     setPasswordError('');
     try {
-      // Test connection by running a simple command
-      const connection = {
-        type: 'mysql' as const,
-        host: 'localhost',
-        port: 3306,
-      };
-
-      // We'll use the instance service to verify password works
-      // by attempting to detect databases (or any authenticated endpoint)
-      await instanceService.detectDatabases(instanceId!, password);
+      // Checks the account password and that the instance accepts an SSH login
+      const result = await instanceService.testConnection(instanceId!, password);
+      if (!result.success) {
+        setPasswordError(result.message || 'Could not connect to the instance');
+        return;
+      }
 
       setIsAuthenticated(true);
       setIsConnected(true);
       addLine(`Connected to ${instanceName || 'instance'}`, 'system');
-      addLine('Type commands to execute on the remote server.', 'system');
-      addLine('Use Ctrl+C to cancel, Ctrl+L to clear screen.', 'system');
+      addLine('Each command runs in a fresh shell in your home directory, so `cd` does not carry over;', 'system');
+      addLine('chain commands with && instead. Commands time out after 30 seconds.', 'system');
+      addLine('Use Ctrl+L to clear the screen.', 'system');
       addLine('', 'output');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Authentication failed';
-      if (message.toLowerCase().includes('decrypt') || message.toLowerCase().includes('password')) {
-        setPasswordError('Incorrect password. Please try again.');
-      } else {
-        // Still might work, let's try
-        setIsAuthenticated(true);
-        setIsConnected(true);
-        addLine(`Connected to ${instanceName || 'instance'}`, 'system');
-        addLine('Type commands to execute on the remote server.', 'system');
-        addLine('', 'output');
-      }
+      setPasswordError(error instanceof Error ? error.message : 'Authentication failed');
     } finally {
       setIsLoading(false);
     }
@@ -153,40 +139,20 @@ export function TerminalModal({
 
     setIsExecuting(true);
     try {
-      // Execute command via SSH by using the file list endpoint to run commands
-      // We'll use a workaround - execute via the preflight service which has SSH access
-      const response = await fetch(`${API_BASE_URL}/api/instances/${instanceId}/terminal/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('clouddesk_access_token')}`,
-        },
-        body: JSON.stringify({ password, command: cmd }),
-      });
-
-      if (!response.ok) {
-        // Fallback: show that terminal execution isn't fully implemented
-        addLine('Note: Interactive terminal requires WebSocket support.', 'system');
-        addLine('For now, use the VNC desktop environment for full terminal access.', 'system');
-        addLine(`Command: ${cmd}`, 'output');
-      } else {
-        const result = await response.json();
-        if (result.success && result.data) {
-          if (result.data.stdout) {
-            result.data.stdout.split('\n').forEach((line: string) => addLine(line, 'output'));
-          }
-          if (result.data.stderr) {
-            result.data.stderr.split('\n').forEach((line: string) => addLine(line, 'error'));
-          }
-        } else if (result.error) {
-          addLine(result.error.message || 'Command failed', 'error');
-        }
+      const result = await instanceService.executeCommand(instanceId, password, cmd);
+      if (result.stdout) {
+        result.stdout.replace(/\n$/, '').split('\n').forEach((line) => addLine(line, 'output'));
+      }
+      if (result.stderr) {
+        result.stderr.replace(/\n$/, '').split('\n').forEach((line) => addLine(line, 'error'));
+      }
+      if (result.truncated) {
+        addLine('[output truncated: the command produced more than 1 MB]', 'system');
+      } else if (result.exitCode !== 0 && result.exitCode !== null) {
+        addLine(`[exit code ${result.exitCode}]`, 'system');
       }
     } catch (error) {
-      // For now, show a helpful message since full WebSocket terminal isn't implemented
-      addLine('Interactive terminal requires additional backend setup.', 'system');
-      addLine('Please use the VNC desktop for full terminal access, or', 'system');
-      addLine('use the File Browser to navigate files.', 'system');
+      addLine(error instanceof Error ? error.message : 'Command failed', 'error');
     } finally {
       setIsExecuting(false);
     }

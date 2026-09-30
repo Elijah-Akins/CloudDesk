@@ -1,4 +1,5 @@
 import http from 'http';
+import { randomUUID } from 'crypto';
 import { URL } from 'url';
 import WebSocket, { WebSocketServer } from 'ws';
 import { Session } from '../models/Session';
@@ -136,18 +137,22 @@ class VNCProxy {
         return;
       }
 
-      // Get or create session bridge (shared TCP connection)
-      const bridge = await sessionBridgeManager.getOrCreateBridge({
+      // Each viewer gets its own connection to the VNC server through the tunnel
+      const bridge = sessionBridgeManager.getOrCreateBridge({
         sessionId,
         tunnelHost: '127.0.0.1',
         tunnelPort: tunnelInfo.localPort,
         ownerId: session.userId.toString(),
       });
 
-      // Add this viewer to the bridge
-      bridge.addViewer(userId, ws, permissions, isOwner);
+      await bridge.addViewer(userId, ws, permissions, isOwner);
 
-      // Store connection info in connection manager
+      // The client may have left while its VNC connection was being opened
+      if (ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      // Track the connection for heartbeat monitoring
       const connectionInfo: WSConnectionInfo = {
         sessionId,
         userId,
@@ -155,7 +160,7 @@ class VNCProxy {
         createdAt: new Date(),
       };
 
-      connectionManager.addConnection(sessionId, ws, connectionInfo);
+      connectionManager.addConnection(randomUUID(), ws, connectionInfo);
 
       // Update session activity
       session.lastActivityAt = new Date();
@@ -169,23 +174,23 @@ class VNCProxy {
         viewerCount: bridge.getViewerCount(),
       });
     } catch (error) {
-      logger.error('Error handling WebSocket connection:', error);
-      if (sessionId && userId) {
-        const bridge = sessionBridgeManager.getBridge(sessionId);
-        if (bridge) {
-          bridge.removeViewer(userId);
-        }
+      logger.error('Error handling WebSocket connection:', {
+        sessionId,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1011, 'Unable to reach the remote desktop');
       }
-      ws.close(1011, 'Internal server error');
     }
   }
 
   /**
-   * Close connection for a specific session
+   * Close all connections for a specific session
    */
   closeSession(sessionId: string): void {
     sessionBridgeManager.closeBridge(sessionId);
-    connectionManager.removeConnection(sessionId);
+    connectionManager.removeSessionConnections(sessionId);
   }
 
   /**

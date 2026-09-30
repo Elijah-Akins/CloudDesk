@@ -21,7 +21,7 @@ const howItWorksSteps = [
   },
   {
     title: '4. Securely stored',
-    description: 'Encrypted credentials are stored - we can never see them in plaintext.',
+    description: 'Only the encrypted form is stored. It is decrypted in memory, with the password you enter, only when you connect.',
   },
 ];
 
@@ -67,7 +67,7 @@ const helpContent = (
     <p>
       <span className="font-medium text-foreground">SSH Key vs Password?</span>
       <br />
-      SSH keys are more secure and recommended. Use a password only if your server doesn't support key authentication.
+      SSH keys are more secure and recommended. Use a password only if your server doesn&apos;t support key authentication.
     </p>
     <p>
       <span className="font-medium text-foreground">How do I get my SSH key?</span>

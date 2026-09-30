@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 import { logger } from '../../utils/logger';
-import { renderPage, statCard, licenseCard } from '../templates';
+import { renderPage, statCard, licenseCard, escapeHtml } from '../templates';
 import { getDashboardStats, formatBytes, getUserAnalytics, getSessionAnalytics } from '../services/analytics';
 import { licenseService } from '../../services/licenseService';
 
@@ -167,8 +167,8 @@ export const dashboard = async (_req: Request, res: Response): Promise<void> => 
                 <div class="flex items-center gap-3">
                   <span class="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium">${index + 1}</span>
                   <div>
-                    <p class="font-medium">${item.user?.firstName || ''} ${item.user?.lastName || ''}</p>
-                    <p class="text-xs text-muted-foreground">${item.user?.email || 'Unknown'}</p>
+                    <p class="font-medium">${escapeHtml(item.user?.firstName)} ${escapeHtml(item.user?.lastName)}</p>
+                    <p class="text-xs text-muted-foreground">${escapeHtml(item.user?.email || 'Unknown')}</p>
                   </div>
                 </div>
                 <span class="text-sm font-medium">${item.sessionCount} sessions</span>

@@ -60,7 +60,13 @@ router.get('/active', sessionController.getActiveSessions);
  * @access  Private
  */
 router.get('/stats', sessionController.getStats);
-/** * @route   GET /api/sessions/recoverable * @desc    Get user's recoverable sessions * @access  Private */router.get('/recoverable', sessionController.getRecoverableSessions);
+
+/**
+ * @route   GET /api/sessions/recoverable
+ * @desc    Get user's recoverable sessions
+ * @access  Private
+ */
+router.get('/recoverable', sessionController.getRecoverableSessions);
 
 /**
  * @route   GET /api/sessions/history
@@ -85,6 +91,17 @@ router.get(
   '/:sessionId',
   validateParams(sessionIdParamSchema),
   sessionController.getSession
+);
+
+/**
+ * @route   GET /api/sessions/:sessionId/status
+ * @desc    Check whether the session's desktop can still be reconnected to
+ * @access  Private (owner or viewer)
+ */
+router.get(
+  '/:sessionId/status',
+  validateParams(sessionIdParamSchema),
+  sessionController.getSessionStatus
 );
 
 /**
@@ -198,12 +215,12 @@ router.patch(
 // ============================================
 
 /**
- * @route   GET /api/sessions/:sessionId/clipboard
- * @desc    Get remote clipboard content from VNC session
+ * @route   POST /api/sessions/:sessionId/clipboard/get
+ * @desc    Get remote clipboard content from VNC session (POST: the body carries the password)
  * @access  Private
  */
-router.get(
-  '/:sessionId/clipboard',
+router.post(
+  '/:sessionId/clipboard/get',
   validateParams(sessionIdParamSchema),
   instanceFeaturesController.getClipboard
 );

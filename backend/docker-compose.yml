@@ -10,7 +10,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"  # localhost only (no auth configured)
     networks:
       - clouddesk-network
     healthcheck:
@@ -28,11 +28,14 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-clouddesk_secure_password}
       MONGO_INITDB_DATABASE: clouddesk
+      # App user created by mongo-init.js (must match MONGODB_URI below)
+      MONGO_USERNAME: ${MONGO_USERNAME:-clouddesk}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-clouddesk_app_password}
     volumes:
       - mongodb_data:/data/db
       - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"  # localhost only (default passwords)
     networks:
       - clouddesk-network
     healthcheck:
@@ -71,7 +74,7 @@ services:
       SESSION_TIMEOUT_MINUTES: 30
       RATE_LIMIT_WINDOW_MS: 900000
       RATE_LIMIT_MAX_REQUESTS: 100
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "3000:3000"

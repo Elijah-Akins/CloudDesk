@@ -31,6 +31,8 @@ export interface CreateInstanceData {
   username: string;
   authType: AuthType;
   credential: string;
+  /** Account password the credential is encrypted with; the server verifies it */
+  password?: string;
   tags?: string[];
 }
 
@@ -42,6 +44,8 @@ export interface UpdateInstanceData {
   username?: string;
   authType?: AuthType;
   credential?: string;
+  /** Required with `credential`: the account password it is encrypted with */
+  password?: string;
   tags?: string[];
   status?: InstanceStatus;
 }
@@ -221,6 +225,14 @@ export interface PortForward {
   connectionCount: number;
   bytesTransferred: number;
   error?: string;
+}
+
+export interface CommandResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  /** Output hit the server's size limit and the command was stopped */
+  truncated: boolean;
 }
 
 export interface CreatePortForwardData {

@@ -8,6 +8,33 @@ import { env } from '../config/environment';
 // Get app name from environment
 const APP_NAME = env.APP_NAME || 'CloudDesk';
 
+/**
+ * Escape a value for HTML text or a double-quoted attribute. Use this for every
+ * value that users can influence (names, emails, instance names/hosts, error
+ * messages, query parameters): these pages render other users' data.
+ */
+export const escapeHtml = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+/**
+ * Format a value as a quoted CSV cell. Embedded quotes are doubled, and values a
+ * spreadsheet would evaluate as a formula (=, +, -, @) are prefixed with '.
+ */
+export const csvCell = (value: unknown): string => {
+  let text = value === null || value === undefined ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(text)) {
+    text = `'${text}`;
+  }
+  return `"${text.replace(/"/g, '""')}"`;
+};
+
 // Tailwind config for consistent theming
 const tailwindConfig = `
   tailwind.config = {
@@ -191,7 +218,7 @@ export const filterBar = (filters: Array<{
               <label class="block text-xs font-medium text-muted-foreground mb-1.5">${filter.label}</label>
               <select name="${filter.name}" class="select w-full">
                 ${filter.options?.map(opt => `
-                  <option value="${opt.value}" ${filter.value === opt.value ? 'selected' : ''}>${opt.label}</option>
+                  <option value="${escapeHtml(opt.value)}" ${filter.value === opt.value ? 'selected' : ''}>${escapeHtml(opt.label)}</option>
                 `).join('')}
               </select>
             </div>
@@ -200,14 +227,14 @@ export const filterBar = (filters: Array<{
           return `
             <div class="flex-1 min-w-[150px]">
               <label class="block text-xs font-medium text-muted-foreground mb-1.5">${filter.label}</label>
-              <input type="date" name="${filter.name}" value="${filter.value || ''}" class="input">
+              <input type="date" name="${filter.name}" value="${escapeHtml(filter.value)}" class="input">
             </div>
           `;
         } else {
           return `
             <div class="flex-1 min-w-[200px]">
               <label class="block text-xs font-medium text-muted-foreground mb-1.5">${filter.label}</label>
-              <input type="text" name="${filter.name}" value="${filter.value || ''}" placeholder="${filter.placeholder || ''}" class="input">
+              <input type="text" name="${filter.name}" value="${escapeHtml(filter.value)}" placeholder="${escapeHtml(filter.placeholder)}" class="input">
             </div>
           `;
         }
@@ -329,7 +356,7 @@ export const licenseCard = (license: {
       <div class="flex items-start justify-between mb-4">
         <div>
           <h3 class="text-lg font-semibold">License</h3>
-          <p class="text-sm text-muted-foreground">${license.organization || 'Self-Hosted'}</p>
+          <p class="text-sm text-muted-foreground">${escapeHtml(license.organization || 'Self-Hosted')}</p>
         </div>
         <span class="px-3 py-1 rounded-full text-sm font-medium bg-${tierColor}/10 text-${tierColor} capitalize">
           ${license.tier}

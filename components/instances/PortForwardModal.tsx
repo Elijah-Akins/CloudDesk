@@ -383,8 +383,8 @@ export function PortForwardModal({
           <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
             <p className="font-medium mb-1">How it works:</p>
             <ul className="list-disc list-inside space-y-0.5">
-              <li>Port forwards create an SSH tunnel from your local machine to the remote instance</li>
-              <li>Access remote services at localhost:[local port]</li>
+              <li>Port forwards create an SSH tunnel from the machine running the CloudDesk backend to the remote instance</li>
+              <li>The local port listens on 127.0.0.1 of that machine, not on your computer, so localhost links only work when you run the backend yourself</li>
               <li>Useful for accessing databases, web servers, or any TCP service</li>
               <li>Forwards are automatically stopped when you close this modal</li>
             </ul>

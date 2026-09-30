@@ -14,7 +14,7 @@ const aboutContent = (
     <p>
       <span className="font-medium text-foreground">What are Instances?</span>
       <br />
-      Instances are your cloud servers (EC2, OCI, etc.) that you've configured for remote desktop access via VNC.
+      Instances are your cloud servers (EC2, OCI, etc.) that you&apos;ve configured for remote desktop access via VNC.
     </p>
     <p>
       <span className="font-medium text-foreground">Manage Your Servers</span>
@@ -121,8 +121,8 @@ export default function InstancesPage() {
                     icon: <HelpCircle className="w-3.5 h-3.5" />,
                     content: (
                       <div className="text-xs text-muted-foreground space-y-2">
-                        <p><span className="font-medium text-foreground">Can't connect?</span> Check if your instance is running and firewall allows connections.</p>
-                        <p><span className="font-medium text-foreground">Need VNC installed?</span> We'll automatically install it on first connection.</p>
+                        <p><span className="font-medium text-foreground">Can&apos;t connect?</span> Check if your instance is running and firewall allows connections.</p>
+                        <p><span className="font-medium text-foreground">Need VNC installed?</span> We&apos;ll automatically install it on first connection.</p>
                         <p><span className="font-medium text-foreground">Session expired?</span> Your credentials may need to be re-entered.</p>
                       </div>
                     ),

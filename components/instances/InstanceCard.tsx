@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Menu, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
-import { Card, StatusBadge, Badge, Button, ConfirmModal } from '@/components/ui';
+import { Card, StatusBadge, Badge, Button, ConfirmModal, PasswordPrompt } from '@/components/ui';
 import { PreflightCheckModal } from './PreflightCheckModal';
 import { SoftwareTemplatesModal } from './SoftwareTemplatesModal';
 import { FileBrowserModal } from './FileBrowserModal';
@@ -42,10 +42,16 @@ export function InstanceCard({ instance, onConnect }: InstanceCardProps) {
   const [showPreflightModal, setShowPreflightModal] = useState(false);
   const [showSoftwareModal, setShowSoftwareModal] = useState(false);
   const [showFileBrowserModal, setShowFileBrowserModal] = useState(false);
+  const [showTestPasswordPrompt, setShowTestPasswordPrompt] = useState(false);
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = () => {
+    setShowTestPasswordPrompt(true);
+  };
+
+  const runTestConnection = async (password: string) => {
+    setShowTestPasswordPrompt(false);
     try {
-      const result = await testConnection(instance.id);
+      const result = await testConnection(instance.id, password);
       if (result.success) {
         toast.success('SSH connection successful!');
       } else {
@@ -267,6 +273,16 @@ export function InstanceCard({ instance, onConnect }: InstanceCardProps) {
           )}
         </div>
       </Card>
+
+      <PasswordPrompt
+        isOpen={showTestPasswordPrompt}
+        onClose={() => setShowTestPasswordPrompt(false)}
+        onSubmit={runTestConnection}
+        title="Test SSH Connection"
+        description="Enter your account password to decrypt this instance's credentials for the test."
+        submitText="Test Connection"
+        isLoading={isTesting}
+      />
 
       <ConfirmModal
         isOpen={showDeleteModal}

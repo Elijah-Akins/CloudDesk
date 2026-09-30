@@ -19,8 +19,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build arguments for environment variables
-ARG NEXT_PUBLIC_API_URL
+# Build arguments for environment variables (inlined into the bundle at build time)
+# NEXT_PUBLIC_API_URL: backend base URL; empty (the default) means same-origin
+# API calls. The ENV below always defines it, so empty stays "" (not undefined).
+ARG NEXT_PUBLIC_API_URL=""
 ARG NEXT_PUBLIC_APP_NAME=CloudDesk
 
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL

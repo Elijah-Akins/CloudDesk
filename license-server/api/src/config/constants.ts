@@ -67,12 +67,16 @@ export const LICENSE_STATUS = {
 
 export type LicenseStatus = (typeof LICENSE_STATUS)[keyof typeof LICENSE_STATUS];
 
+// Mirrors Stripe's subscription statuses (stored as-is from webhooks)
 export const SUBSCRIPTION_STATUS = {
   ACTIVE: 'active',
   PAST_DUE: 'past_due',
   CANCELED: 'canceled',
   INCOMPLETE: 'incomplete',
+  INCOMPLETE_EXPIRED: 'incomplete_expired',
   TRIALING: 'trialing',
+  UNPAID: 'unpaid',
+  PAUSED: 'paused',
 } as const;
 
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];

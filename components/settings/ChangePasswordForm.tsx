@@ -30,11 +30,16 @@ export function ChangePasswordForm() {
   const onSubmit = async (data: ChangePasswordFormData) => {
     setIsLoading(true);
     try {
-      await changePassword({
+      const result = await changePassword({
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
       });
       toast.success(SUCCESS_MESSAGES.PASSWORD_CHANGED);
+      if (result.credentialsNotReencrypted) {
+        toast.warning(
+          `${result.credentialsNotReencrypted} instance credential(s) could not be decrypted and need to be re-entered in the instance settings.`
+        );
+      }
       reset();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to change password';
