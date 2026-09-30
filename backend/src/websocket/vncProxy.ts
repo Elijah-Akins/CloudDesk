@@ -5,10 +5,14 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { Session } from '../models/Session';
 import { authService } from '../services/authService';
 import { tunnelService } from '../services/tunnelService';
+import { wsTicketService } from '../services/wsTicketService';
 import { connectionManager } from './connectionManager';
 import { sessionBridgeManager, ViewerPermission } from './SessionBridge';
 import { logger } from '../utils/logger';
 import { WSConnectionInfo } from '../types';
+
+/** Request as seen after verifyClient has authenticated it */
+type AuthenticatedRequest = http.IncomingMessage & { vncUserId?: string };
 
 interface VNCProxyOptions {
   server: http.Server;
@@ -41,21 +45,33 @@ class VNCProxy {
     try {
       const url = new URL(info.req.url || '', `http://${info.req.headers.host}`);
       const sessionId = url.searchParams.get('sessionId');
+      const ticket = url.searchParams.get('ticket');
       const token = url.searchParams.get('token');
 
-      if (!sessionId || !token) {
-        callback(false, 401, 'Missing sessionId or token');
+      if (!sessionId || (!ticket && !token)) {
+        callback(false, 401, 'Missing sessionId or ticket');
         return;
       }
 
-      // Verify token
-      try {
-        authService.verifyAccessToken(token);
-      } catch {
-        callback(false, 401, 'Invalid token');
+      let userId: string | null = null;
+      if (ticket) {
+        // Preferred: a single-use ticket from POST /api/sessions/:id/ws-ticket
+        userId = wsTicketService.redeem(ticket, sessionId);
+      } else if (token) {
+        // Legacy: the access token itself in the URL (older frontends)
+        try {
+          userId = authService.verifyAccessToken(token).userId;
+        } catch {
+          userId = null;
+        }
+      }
+
+      if (!userId) {
+        callback(false, 401, 'Invalid or expired ticket');
         return;
       }
 
+      (info.req as AuthenticatedRequest).vncUserId = userId;
       callback(true);
     } catch (error) {
       logger.error('WebSocket verify client error:', error);
@@ -87,16 +103,13 @@ class VNCProxy {
     try {
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       sessionId = url.searchParams.get('sessionId');
-      const token = url.searchParams.get('token');
+      // Authenticated (ticket redeemed or token verified) in verifyClient
+      userId = (req as AuthenticatedRequest).vncUserId ?? null;
 
-      if (!sessionId || !token) {
-        ws.close(1008, 'Missing sessionId or token');
+      if (!sessionId || !userId) {
+        ws.close(1008, 'Not authenticated');
         return;
       }
-
-      // Verify token and get user info
-      const payload = authService.verifyAccessToken(token);
-      userId = payload.userId;
 
       // Get session from database - allow owner OR invited viewer
       const session = await Session.findOne({
