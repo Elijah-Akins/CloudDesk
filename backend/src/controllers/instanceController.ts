@@ -10,7 +10,7 @@ import { HTTP_STATUS, ERROR_CODES, AUDIT_ACTIONS } from '../config/constants';
 import { NotFoundError, UnauthorizedError, ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { escapeRegex } from '../utils/helpers';
-import { CreateInstanceDTO, UpdateInstanceDTO, SSHConfig, InstanceQuery } from '../types';
+import { CreateInstanceDTO, UpdateInstanceDTO, InstanceQuery } from '../types';
 
 /**
  * Get all instances for the current user
@@ -216,6 +216,13 @@ export const updateInstance = asyncHandler(async (req: Request, res: Response): 
   // Update fields
   if (data.name !== undefined) instance.name = data.name;
   if (data.provider !== undefined) instance.provider = data.provider;
+  // A different server has a different host key: forget the pinned one
+  if (
+    (data.host !== undefined && data.host !== instance.host) ||
+    (data.port !== undefined && data.port !== instance.port)
+  ) {
+    instance.hostKeyFingerprint = undefined;
+  }
   if (data.host !== undefined) instance.host = data.host;
   if (data.port !== undefined) instance.port = data.port;
   if (data.username !== undefined) instance.username = data.username;
@@ -293,6 +300,42 @@ export const deleteInstance = asyncHandler(async (req: Request, res: Response): 
 });
 
 /**
+ * Forget the pinned SSH host key (after the server was rebuilt); the next
+ * connection pins whatever key the server presents
+ * DELETE /api/instances/:id/host-key
+ */
+export const resetHostKey = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const { userId } = (req as AuthRequest).user;
+  const { id } = req.params;
+  const ipAddress = getClientIp(req);
+  const userAgent = getUserAgent(req);
+
+  const instance = await Instance.findOne({ _id: id, userId });
+  if (!instance) {
+    throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
+  }
+
+  const previous = instance.hostKeyFingerprint;
+  instance.hostKeyFingerprint = undefined;
+  await instance.save();
+
+  await AuditLog.logAction({
+    userId,
+    action: AUDIT_ACTIONS.INSTANCE_UPDATE,
+    resource: instance.name,
+    status: 'success',
+    ipAddress,
+    userAgent,
+    details: { instanceId: id, hostKeyReset: true, previousHostKey: previous },
+  });
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    data: instance,
+  });
+});
+
+/**
  * Test SSH connection to an instance
  * POST /api/instances/:id/test-connection
  */
@@ -315,20 +358,8 @@ export const testConnection = asyncHandler(async (req: Request, res: Response): 
 
   await verifyAccountPassword(userId, password);
 
-  // Build SSH config
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  // Both encryption layers have to come off: server-side, then the password-based one
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  // Decrypts both credential layers and applies the pinned host key
+  const sshConfig = instance.getSSHConfig(password);
 
   // Test connection
   const success = await sshService.testConnection(sshConfig);
@@ -360,4 +391,5 @@ export default {
   updateInstance,
   deleteInstance,
   testConnection,
+  resetHostKey,
 };

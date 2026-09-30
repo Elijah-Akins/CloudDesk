@@ -19,6 +19,7 @@ export const API_ENDPOINTS = {
     BASE: '/api/instances',
     BY_ID: (id: string) => `/api/instances/${id}`,
     TEST_CONNECTION: (id: string) => `/api/instances/${id}/test-connection`,
+    HOST_KEY: (id: string) => `/api/instances/${id}/host-key`,
     // Instance Features
     OS_INFO: (id: string) => `/api/instances/${id}/os-info`,
     PREFLIGHT: (id: string) => `/api/instances/${id}/preflight`,

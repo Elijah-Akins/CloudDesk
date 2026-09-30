@@ -6,6 +6,7 @@ import { ConnectSessionDTO } from '../types';
 import { logger } from '../utils/logger';
 import { User } from '../models/User';
 import { sessionRecoveryService } from '../services/sessionRecoveryService';
+import { wsTicketService } from '../services/wsTicketService';
 
 /**
  * Connect to an instance (create session)
@@ -337,6 +338,36 @@ export const getRecoverableSessions = asyncHandler(async (req: Request, res: Res
 });
 
 /**
+ * Issue a short-lived, single-use ticket for opening the session's VNC WebSocket,
+ * so the access token never has to appear in a URL
+ * POST /api/sessions/:sessionId/ws-ticket
+ */
+export const createWebSocketTicket = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const { userId } = (req as AuthRequest).user;
+  const { sessionId } = req.params;
+
+  // Owner or invited viewer of an active session only
+  const session = await sessionService.getSessionById(userId, sessionId);
+  if (!session || (session.status !== 'connected' && session.status !== 'connecting')) {
+    res.status(HTTP_STATUS.NOT_FOUND).json({
+      success: false,
+      error: {
+        message: 'Session not found or not active',
+        code: 'SESSION_NOT_FOUND',
+      },
+    });
+    return;
+  }
+
+  const { ticket, expiresInMs } = wsTicketService.issue(userId, sessionId);
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    data: { ticket, expiresInMs },
+  });
+});
+
+/**
  * Whether the session's desktop can still be reconnected to (used by the viewer's auto-reconnect)
  * GET /api/sessions/:sessionId/status
  */
@@ -374,4 +405,5 @@ export default {
   getSessionHistory,
   getRecoverableSessions,
   getSessionStatus,
+  createWebSocketTicket,
 };

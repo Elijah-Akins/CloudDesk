@@ -1,8 +1,13 @@
+import crypto from 'crypto';
 import { Client, ConnectConfig, ClientChannel } from 'ssh2';
-import { SSH_CONSTANTS } from '../config/constants';
+import { SSH_CONSTANTS, ERROR_CODES } from '../config/constants';
 import { SSHError } from '../utils/errors';
 import { logger, logSSH } from '../utils/logger';
 import { SSHConfig, SSHCommandResult } from '../types';
+
+/** Fingerprint a raw SSH host key the way `ssh-keygen -lf` shows it */
+export const fingerprintHostKey = (key: Buffer): string =>
+  `SHA256:${crypto.createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`;
 
 class SSHService {
   private activeConnections: Map<string, Client> = new Map();
@@ -14,6 +19,8 @@ class SSHService {
     return new Promise((resolve, reject) => {
       const client = new Client();
       const connectionId = `${config.host}:${config.port}`;
+      let seenHostKey: string | null = null;
+      let hostKeyMismatch = false;
 
       const connectConfig: ConnectConfig = {
         host: config.host,
@@ -22,6 +29,16 @@ class SSHService {
         readyTimeout: SSH_CONSTANTS.CONNECTION_TIMEOUT,
         keepaliveInterval: SSH_CONSTANTS.KEEPALIVE_INTERVAL,
         keepaliveCountMax: SSH_CONSTANTS.KEEPALIVE_COUNT_MAX,
+        // Trust on first use: once an instance's host key is pinned, refuse any
+        // other key, so a man in the middle can't collect the credential
+        hostVerifier: (key: Buffer) => {
+          seenHostKey = fingerprintHostKey(key);
+          if (config.hostKeyFingerprint && config.hostKeyFingerprint !== seenHostKey) {
+            hostKeyMismatch = true;
+            return false;
+          }
+          return true;
+        },
       };
 
       // Set authentication method
@@ -38,6 +55,11 @@ class SSHService {
       client.on('ready', () => {
         logSSH('connection_ready', config.host);
         this.activeConnections.set(connectionId, client);
+        if (!config.hostKeyFingerprint && seenHostKey && config.onHostKeyFirstSeen) {
+          Promise.resolve(config.onHostKeyFirstSeen(seenHostKey)).catch((error) => {
+            logger.warn('Failed to store SSH host key fingerprint:', error);
+          });
+        }
         resolve(client);
       });
 
@@ -45,7 +67,19 @@ class SSHService {
         logSSH('connection_error', config.host, { error: err.message });
         this.activeConnections.delete(connectionId);
 
-        if (err.message.includes('Authentication failed')) {
+        if (hostKeyMismatch) {
+          logger.warn('SSH host key mismatch', {
+            host: config.host,
+            expected: config.hostKeyFingerprint,
+            received: seenHostKey,
+          });
+          reject(new SSHError(
+            `The server's SSH host key has changed (now ${seenHostKey}). This happens when the ` +
+              'server is rebuilt, but can also mean the connection is being intercepted. If you ' +
+              'expected the change, reset the saved host key in the instance settings.',
+            ERROR_CODES.SSH_HOST_KEY_MISMATCH
+          ));
+        } else if (err.message.includes('Authentication failed')) {
           reject(new SSHError('SSH authentication failed. Check your credentials.'));
         } else if (err.message.includes('ECONNREFUSED')) {
           reject(new SSHError('SSH connection refused. Check if the host is reachable.'));
@@ -241,6 +275,10 @@ class SSHService {
 
       return result.code === 0;
     } catch (error) {
+      // A changed host key needs the user's attention, not just "failed"
+      if (error instanceof SSHError && error.code === ERROR_CODES.SSH_HOST_KEY_MISMATCH) {
+        throw error;
+      }
       logger.warn('SSH connection test failed:', error);
       return false;
     } finally {

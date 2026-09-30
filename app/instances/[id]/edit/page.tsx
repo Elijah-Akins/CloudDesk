@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout';
-import { InstanceForm } from '@/components/instances';
+import { InstanceForm, HostKeyCard } from '@/components/instances';
 import { PageLoader } from '@/components/ui';
 import { useInstanceStore } from '@/lib/stores';
 import { ROUTES } from '@/lib/utils/constants';
@@ -35,6 +35,7 @@ export default function EditInstancePage() {
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
         <InstanceForm mode="edit" instance={currentInstance} />
+        <HostKeyCard instance={currentInstance} onReset={() => fetchInstance(currentInstance.id)} />
       </div>
     </DashboardLayout>
   );

@@ -49,10 +49,13 @@ interface VncFrameWindow extends Window {
 }
 
 /** Build the absolute WebSocket URL for the VNC proxy (API may be same-origin) */
-function buildVncWebSocketUrl(path: string, token: string): string {
+function buildVncWebSocketUrl(path: string, auth: { ticket: string } | { token: string }): string {
   const base = (API_BASE_URL || window.location.origin).replace(/^http/, 'ws');
   const separator = path.includes('?') ? '&' : '?';
-  return `${base}${path}${separator}token=${encodeURIComponent(token)}`;
+  const param = 'ticket' in auth
+    ? `ticket=${encodeURIComponent(auth.ticket)}`
+    : `token=${encodeURIComponent(auth.token)}`;
+  return `${base}${path}${separator}${param}`;
 }
 
 export function VNCViewer({ sessionId, websocketUrl, isOwner = true, viewOnly = false }: VNCViewerProps) {
@@ -91,25 +94,43 @@ export function VNCViewer({ sessionId, websocketUrl, isOwner = true, viewOnly = 
     }
   }, [frameSrc]);
 
-  // Hand the WebSocket URL (which carries the access token) to the frame once it
-  // has loaded. Reading the token here, rather than when the page first renders,
-  // means reconnects pick up a token the API client may have refreshed since.
-  const handleFrameLoad = useCallback(() => {
-    const frameWindow = getFrameWindow();
-    if (!frameWindow) return;
+  // Once the frame has loaded, hand it the WebSocket URL. It carries a fresh
+  // single-use ticket rather than the access token, so no credential that
+  // outlives the handshake ends up in a URL (or in proxy logs).
+  const handleFrameLoad = useCallback(async () => {
+    if (!getFrameWindow()) return;
 
-    const token = getAccessToken();
-    if (!token) {
-      setError('Authentication required. Please log in again.');
-      setIsConnecting(false);
-      return;
+    let auth: { ticket: string } | { token: string };
+    try {
+      const response = await api.post<{ ticket: string }>(`/api/sessions/${sessionId}/ws-ticket`);
+      if (!response.success || !response.data?.ticket) {
+        throw new Error(response.error?.message || 'Could not start the desktop connection');
+      }
+      auth = { ticket: response.data.ticket };
+    } catch (err) {
+      const { status, code } = err as { status?: number; code?: string };
+      const token = getAccessToken();
+      // A backend without ticket support answers 404 for the route itself; fall
+      // back to the token there. Any other failure is a real error.
+      if (status === 404 && code !== 'SESSION_NOT_FOUND' && token) {
+        auth = { token };
+      } else {
+        setError(
+          code === 'SESSION_NOT_FOUND'
+            ? 'This session is no longer available.'
+            : err instanceof Error ? err.message : 'Could not start the desktop connection'
+        );
+        setIsConnecting(false);
+        setIsReconnecting(false);
+        return;
+      }
     }
 
-    frameWindow.postMessage(
-      { type: 'vnc-connect', url: buildVncWebSocketUrl(websocketUrl, token) },
+    getFrameWindow()?.postMessage(
+      { type: 'vnc-connect', url: buildVncWebSocketUrl(websocketUrl, auth) },
       window.location.origin
     );
-  }, [getFrameWindow, websocketUrl]);
+  }, [getFrameWindow, sessionId, websocketUrl]);
 
   // Check if session is recoverable and attempt auto-reconnect
   const attemptAutoReconnect = useCallback(async () => {

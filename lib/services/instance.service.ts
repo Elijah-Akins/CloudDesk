@@ -70,6 +70,14 @@ export const instanceService = {
     }
   },
 
+  async resetHostKey(id: string): Promise<Instance> {
+    const response = await api.delete<Instance>(API_ENDPOINTS.INSTANCES.HOST_KEY(id));
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error?.message || 'Failed to reset host key');
+  },
+
   async testConnection(id: string, password: string): Promise<TestConnectionResult> {
     // The account password decrypts the stored credential for the test
     const response = await api.post<TestConnectionResult>(

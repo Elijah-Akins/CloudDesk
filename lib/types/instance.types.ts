@@ -12,6 +12,8 @@ export interface Instance {
   port: number;
   username: string;
   authType: AuthType;
+  /** SSH host key pinned on the first connection (`SHA256:...`) */
+  hostKeyFingerprint?: string;
   tags: string[];
   vncDisplayNumber?: number;
   vncPort?: number;

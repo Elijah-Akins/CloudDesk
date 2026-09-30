@@ -94,6 +94,10 @@ export interface SSHConfig {
   username: string;
   privateKey?: string;
   password?: string;
+  /** Pinned host key (OpenSSH-style `SHA256:...`); a different key aborts the connection */
+  hostKeyFingerprint?: string;
+  /** Called after a successful connection with the host key seen, when none was pinned */
+  onHostKeyFirstSeen?: (fingerprint: string) => void | Promise<void>;
 }
 
 export interface SSHCommandResult {

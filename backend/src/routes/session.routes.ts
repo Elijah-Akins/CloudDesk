@@ -105,6 +105,17 @@ router.get(
 );
 
 /**
+ * @route   POST /api/sessions/:sessionId/ws-ticket
+ * @desc    Get a single-use ticket for opening the session's VNC WebSocket
+ * @access  Private (owner or viewer)
+ */
+router.post(
+  '/:sessionId/ws-ticket',
+  validateParams(sessionIdParamSchema),
+  sessionController.createWebSocketTicket
+);
+
+/**
  * @route   POST /api/sessions/:sessionId/activity
  * @desc    Update session activity (keep-alive)
  * @access  Private

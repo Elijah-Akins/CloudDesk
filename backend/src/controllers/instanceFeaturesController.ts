@@ -9,7 +9,6 @@ import { databaseService, DatabaseConnection } from '../services/databaseService
 import { portForwardingService } from '../services/portForwardingService';
 import { NotFoundError, ValidationError } from '../utils/errors';
 import { ERROR_CODES, HTTP_STATUS, DEV_SOFTWARE_TEMPLATES, DevSoftwareTemplate } from '../config/constants';
-import { SSHConfig } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 // Store active port forwards and SSH clients per user/instance
@@ -34,18 +33,7 @@ export const runPreflightCheck = asyncHandler(async (req: Request, res: Response
   }
 
   // Build SSH config
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -81,18 +69,7 @@ export const dryRunProvisioning = asyncHandler(async (req: Request, res: Respons
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -153,18 +130,7 @@ export const installDevSoftware = asyncHandler(async (req: Request, res: Respons
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -204,18 +170,7 @@ export const listDirectory = asyncHandler(async (req: Request, res: Response) =>
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -264,18 +219,7 @@ export const downloadFile = asyncHandler(async (req: Request, res: Response) => 
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -317,18 +261,7 @@ export const uploadFile = asyncHandler(async (req: Request, res: Response) => {
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -374,18 +307,7 @@ export const deleteFile = asyncHandler(async (req: Request, res: Response) => {
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -425,18 +347,7 @@ export const createDirectory = asyncHandler(async (req: Request, res: Response) 
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -488,18 +399,7 @@ export const getClipboard = asyncHandler(async (req: Request, res: Response) => 
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -551,18 +451,7 @@ export const setClipboard = asyncHandler(async (req: Request, res: Response) => 
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -627,18 +516,7 @@ export const detectDatabases = asyncHandler(async (req: Request, res: Response) 
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -678,18 +556,7 @@ export const listDatabases = asyncHandler(async (req: Request, res: Response) =>
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -729,18 +596,7 @@ export const listTables = asyncHandler(async (req: Request, res: Response) => {
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -780,18 +636,7 @@ export const getTableSchema = asyncHandler(async (req: Request, res: Response) =
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -831,18 +676,7 @@ export const executeQuery = asyncHandler(async (req: Request, res: Response) => 
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -894,18 +728,7 @@ export const executeTerminalCommand = asyncHandler(async (req: Request, res: Res
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   let sshClient;
   try {
@@ -968,18 +791,7 @@ export const createPortForward = asyncHandler(async (req: Request, res: Response
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
 
-  const sshConfig: SSHConfig = {
-    host: instance.host,
-    port: instance.port,
-    username: instance.username,
-  };
-
-  const credential = instance.getFullyDecryptedCredential(password);
-  if (instance.authType === 'key') {
-    sshConfig.privateKey = credential;
-  } else {
-    sshConfig.password = credential;
-  }
+  const sshConfig = instance.getSSHConfig(password);
 
   const forwardKey = `${userId}:${instanceId}`;
   let clientData = activePortForwards.get(forwardKey);

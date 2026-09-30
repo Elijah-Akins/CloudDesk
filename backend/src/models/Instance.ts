@@ -15,6 +15,7 @@ import {
 } from '../config/constants';
 import { encryptionService } from '../services/encryptionService';
 import { ValidationError } from '../utils/errors';
+import { SSHConfig } from '../types';
 
 // OS Information stored after detection
 export interface IOSInfo {
@@ -45,6 +46,8 @@ export interface IInstance {
   username: string;
   authType: AuthType;
   encryptedCredential: string;
+  /** SSH host key pinned on first successful connection (`SHA256:...`) */
+  hostKeyFingerprint?: string;
   tags: string[];
   vncDisplayNumber?: number;
   vncPort?: number;
@@ -71,6 +74,7 @@ export interface IInstanceDocument extends IInstance, Document {
   hasLegacyCredential(): boolean;
   setCredential(credential: string): void;
   setPasswordEncryptedCredential(plaintext: string, userPassword: string): void;
+  getSSHConfig(userPassword: string): SSHConfig;
   markConnected(): Promise<void>;
 }
 
@@ -127,6 +131,9 @@ const instanceSchema = new Schema<IInstanceDocument>(
       type: String,
       required: [true, 'Credential is required'],
       select: false, // Don't include by default in queries
+    },
+    hostKeyFingerprint: {
+      type: String,
     },
     tags: [{
       type: String,
@@ -267,6 +274,38 @@ instanceSchema.methods.setCredential = function (credential: string): void {
 
 // Instance method to store a plaintext credential with both encryption layers
 // (password-based, then server-side), matching what the frontend produces
+// Instance method: SSH connection settings with the decrypted credential and
+// host key pinning (the first key seen is stored; later connections must match)
+instanceSchema.methods.getSSHConfig = function (userPassword: string): SSHConfig {
+  const instance = this as IInstanceDocument;
+  const config: SSHConfig = {
+    host: instance.host,
+    port: instance.port,
+    username: instance.username,
+    hostKeyFingerprint: instance.hostKeyFingerprint || undefined,
+  };
+
+  const credential = instance.getFullyDecryptedCredential(userPassword);
+  if (instance.authType === 'key') {
+    config.privateKey = credential;
+  } else {
+    config.password = credential;
+  }
+
+  if (!instance.hostKeyFingerprint) {
+    config.onHostKeyFirstSeen = async (fingerprint: string) => {
+      instance.hostKeyFingerprint = fingerprint;
+      // Only pin if nothing was pinned concurrently
+      await (instance.constructor as IInstanceModel).updateOne(
+        { _id: instance._id, hostKeyFingerprint: { $in: [null, ''] } },
+        { $set: { hostKeyFingerprint: fingerprint } }
+      );
+    };
+  }
+
+  return config;
+};
+
 instanceSchema.methods.setPasswordEncryptedCredential = function (
   plaintext: string,
   userPassword: string
