@@ -88,6 +88,17 @@ router.post(
   instanceController.testConnection
 );
 
+/**
+ * @route   DELETE /api/instances/:id/host-key
+ * @desc    Forget the pinned SSH host key (e.g. after rebuilding the server)
+ * @access  Private
+ */
+router.delete(
+  '/:id/host-key',
+  validateParams(objectIdParamSchema),
+  instanceController.resetHostKey
+);
+
 // ============================================
 // Instance Features Routes
 // ============================================

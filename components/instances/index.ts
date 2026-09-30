@@ -1,4 +1,5 @@
 export { InstanceCard } from './InstanceCard';
+export { HostKeyCard } from './HostKeyCard';
 export { InstanceForm } from './InstanceForm';
 export { InstanceList } from './InstanceList';
 export { ConnectModal } from './ConnectModal';

@@ -22,7 +22,7 @@ import { vncService } from './vncService';
 import { provisionService } from './provisionService';
 import { tunnelService } from './tunnelService';
 import { sessionBridgeManager } from '../websocket/SessionBridge';
-import { SessionInfo, SSHConfig, TunnelInfo } from '../types';
+import { SessionInfo, TunnelInfo } from '../types';
 
 export interface SessionHealth {
   isRecoverable: boolean;
@@ -100,20 +100,9 @@ class SessionService {
         throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
       }
 
-      // Create SSH config
-      const sshConfig: SSHConfig = {
-        host: instance.host,
-        port: instance.port,
-        username: instance.username,
-      };
-
-      // Get fully decrypted credential (server-side + client-side decryption)
-      const credential = instance.getFullyDecryptedCredential(userPassword);
-      if (instance.authType === 'key') {
-        sshConfig.privateKey = credential;
-      } else {
-        sshConfig.password = credential;
-      }
+      // SSH settings with the fully decrypted credential and the pinned host key
+      const sshConfig = instance.getSSHConfig(userPassword);
+      const credential = (instance.authType === 'key' ? sshConfig.privateKey : sshConfig.password) as string;
 
       logVNC('connecting_ssh', instanceId);
 
