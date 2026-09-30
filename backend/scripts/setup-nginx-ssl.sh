@@ -141,6 +141,32 @@ server {
         proxy_buffering off;
         proxy_request_buffering off;
     }
+
+    # VNC WebSocket - long-lived, and an idle desktop sends no data for
+    # minutes, so it needs much longer timeouts than regular API requests
+    location = /vnc {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+
+        # Headers
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+
+        # WebSocket support
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+
+        # Buffering
+        proxy_buffering off;
+    }
 }
 EOF
 
@@ -164,6 +190,20 @@ systemctl enable nginx
 # Set up automatic certificate renewal
 echo ""
 echo "Setting up automatic certificate renewal..."
+# The certificate uses certbot's standalone authenticator, which needs port 80,
+# so nginx must be stopped while certbot renews and started again afterwards.
+# Hooks in these directories run only for "certbot renew" (incl. certbot.timer).
+mkdir -p /etc/letsencrypt/renewal-hooks/pre /etc/letsencrypt/renewal-hooks/post
+cat > /etc/letsencrypt/renewal-hooks/pre/clouddesk-stop-nginx.sh <<'HOOK'
+#!/bin/sh
+systemctl stop nginx
+HOOK
+cat > /etc/letsencrypt/renewal-hooks/post/clouddesk-start-nginx.sh <<'HOOK'
+#!/bin/sh
+systemctl start nginx
+HOOK
+chmod +x /etc/letsencrypt/renewal-hooks/pre/clouddesk-stop-nginx.sh \
+    /etc/letsencrypt/renewal-hooks/post/clouddesk-start-nginx.sh
 systemctl enable certbot.timer
 systemctl start certbot.timer
 

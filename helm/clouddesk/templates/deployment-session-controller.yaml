@@ -31,9 +31,9 @@ spec:
           env:
             - name: WORKER_IMAGE
               value: "{{ .Values.global.imageRegistry }}{{ .Values.sessionWorker.image.repository }}:{{ .Values.sessionWorker.image.tag }}"
-            - name: WORKER_PORT_START
+            - name: PORT_RANGE_START
               value: {{ .Values.sessionWorker.portRange.start | quote }}
-            - name: WORKER_PORT_END
+            - name: PORT_RANGE_END
               value: {{ .Values.sessionWorker.portRange.end | quote }}
             - name: DOCKER_NETWORK
               value: {{ include "clouddesk.fullname" . }}-network

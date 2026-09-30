@@ -5,8 +5,10 @@
 db = db.getSiblingDB('clouddesk');
 
 // Create application user with readWrite access
+// MONGO_USERNAME / MONGO_PASSWORD must be passed to the mongodb container and
+// match the credentials in the backend's MONGODB_URI (authSource=clouddesk)
 db.createUser({
-  user: 'clouddesk',
+  user: process.env.MONGO_USERNAME || 'clouddesk',
   pwd: process.env.MONGO_PASSWORD || 'clouddesk_app_password',
   roles: [
     {

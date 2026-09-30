@@ -15,17 +15,17 @@ data:
 
   # Session worker configuration
   WORKER_IMAGE: "{{ .Values.global.imageRegistry }}{{ .Values.sessionWorker.image.repository }}:{{ .Values.sessionWorker.image.tag }}"
-  WORKER_PORT_START: {{ .Values.sessionWorker.portRange.start | quote }}
-  WORKER_PORT_END: {{ .Values.sessionWorker.portRange.end | quote }}
+  WORKER_PORT_RANGE_START: {{ .Values.sessionWorker.portRange.start | quote }}
+  WORKER_PORT_RANGE_END: {{ .Values.sessionWorker.portRange.end | quote }}
 
-  # Frontend URL (for CORS)
+  # Allowed browser origins (the backend reads CORS_ORIGINS)
   {{- if .Values.ingress.enabled }}
   {{- $host := (index .Values.ingress.hosts 0).host }}
   {{- if .Values.ingress.tls }}
-  FRONTEND_URL: "https://{{ $host }}"
+  CORS_ORIGINS: "https://{{ $host }}"
   {{- else }}
-  FRONTEND_URL: "http://{{ $host }}"
+  CORS_ORIGINS: "http://{{ $host }}"
   {{- end }}
   {{- else }}
-  FRONTEND_URL: "http://localhost:3000"
+  CORS_ORIGINS: "http://localhost:3000"
   {{- end }}

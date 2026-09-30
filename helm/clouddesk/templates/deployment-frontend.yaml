@@ -26,6 +26,10 @@ spec:
             - name: http
               containerPort: 3000
               protocol: TCP
+          # NOTE: Next.js inlines NEXT_PUBLIC_* at build time, so these runtime
+          # values have no effect on the prebuilt image. The published image is
+          # built with an empty NEXT_PUBLIC_API_URL (same-origin API calls,
+          # routed to the backend by the ingress /api and /vnc paths).
           env:
             - name: NEXT_PUBLIC_API_URL
               {{- if .Values.frontend.env.NEXT_PUBLIC_API_URL }}

@@ -109,11 +109,11 @@ mongodb:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `security.jwtAccessSecret` | JWT access token secret | Auto-generated |
-| `security.jwtRefreshSecret` | JWT refresh token secret | Auto-generated |
-| `security.encryptionKey` | Encryption key for credentials | Auto-generated |
+| `security.jwtAccessSecret` | JWT access token secret (min 32 chars) | Auto-generated |
+| `security.jwtRefreshSecret` | JWT refresh token secret (min 32 chars) | Auto-generated |
+| `security.encryptionKey` | Encryption key for credentials (exactly 64 hex chars, e.g. `openssl rand -hex 32`) | Auto-generated |
 
-> **Warning**: In production, always set explicit values for security secrets to ensure consistency across upgrades.
+> **Note**: Auto-generated secrets are kept across `helm upgrade` (read back from the existing Secret). In production, still set explicit values (and back them up) so they survive an uninstall/reinstall.
 
 ### Ingress Configuration
 
@@ -131,6 +131,9 @@ ingress:
           service: frontend
         - path: /api
           pathType: Prefix
+          service: backend
+        - path: /vnc
+          pathType: Exact
           service: backend
         - path: /socket.io
           pathType: Prefix

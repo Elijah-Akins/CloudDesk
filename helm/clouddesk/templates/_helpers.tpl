@@ -100,10 +100,12 @@ Create the name of the service account to use
 
 {{/*
 MongoDB connection string
+The bundled chart creates auth.username in auth.database (not in admin),
+so that database is the authSource.
 */}}
 {{- define "clouddesk.mongodbUri" -}}
 {{- if .Values.mongodb.enabled }}
-{{- printf "mongodb://%s:%s@%s-mongodb:27017/%s?authSource=admin" .Values.mongodb.auth.username .Values.mongodb.auth.password (include "clouddesk.fullname" .) .Values.mongodb.auth.database }}
+{{- printf "mongodb://%s:%s@%s-mongodb:27017/%s?authSource=%s" .Values.mongodb.auth.username .Values.mongodb.auth.password (include "clouddesk.fullname" .) .Values.mongodb.auth.database .Values.mongodb.auth.database }}
 {{- else }}
 {{- printf "mongodb://%s:%s@%s:%d/%s?authSource=admin" .Values.mongodb.external.username .Values.mongodb.external.password .Values.mongodb.external.host (int .Values.mongodb.external.port) .Values.mongodb.external.database }}
 {{- end }}
