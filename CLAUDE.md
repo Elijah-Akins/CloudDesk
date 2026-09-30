@@ -136,9 +136,9 @@ Monochrome palette with glassy effects:
 - Credentials stored without the password layer (old quick-edit bug) still work and are upgraded on the next successful connect
 
 ### SSH/VNC Flow (in-process, current)
-1. `POST /api/sessions/connect` checks the account password, decrypts the credential, opens SSH
+1. `POST /api/sessions/connect` checks the account password, decrypts the credential, opens SSH (host key pinned per instance on first connect; a changed key is refused until reset via `DELETE /api/instances/:id/host-key`)
 2. Provisions VNC if missing, starts it on `-localhost` (`-SecurityTypes None -AlwaysShared`), opens a local SSH tunnel (6000-7000)
-3. The browser connects to `wss://<api>/vnc?sessionId=...&token=<JWT>`; `vncProxy` authorizes owner or invited viewer and hands the socket to the session's `SessionBridge`
+3. The browser gets a 30s single-use ticket (`POST /api/sessions/:id/ws-ticket`) and connects to `wss://<api>/vnc?sessionId=...&ticket=...`, so the JWT never appears in a URL (`token=<JWT>` is still accepted for older frontends); `vncProxy` authorizes owner or invited viewer and hands the socket to the session's `SessionBridge`
 4. Each viewer gets its own RFB connection through the tunnel; view-only input is filtered, kick/permission changes apply live
 5. Connected viewers keep the session active; after `SESSION_TIMEOUT_MINUTES` without any viewer, cleanup stops VNC and closes the tunnel
 6. `GET /api/sessions/:id/status` tells the viewer whether an auto-reconnect can work
@@ -214,6 +214,7 @@ ssh -i backend/CloudDesk.pem ubuntu@54.156.134.142 "cd ~/clouddesk && docker com
 - `GET /api/sessions/stats` - Session statistics
 - `POST /api/sessions/disconnect-all` - Disconnect all sessions
 - `GET /api/sessions/:id/status` - Whether the session can be reconnected to
+- `POST /api/sessions/:id/ws-ticket` - Single-use ticket for opening the VNC WebSocket
 - Collaboration: `POST /:id/invite`, `GET /:id/invites`, `POST /join/:token`, `GET /invite-info/:token`, `GET /:id/viewers`, `PATCH|DELETE /:id/viewers/:viewerId`, `POST /:id/collaboration`
 - Clipboard: `POST /:id/clipboard/get`, `POST /:id/clipboard` (display comes from the session record)
 
@@ -229,6 +230,7 @@ ssh -i backend/CloudDesk.pem ubuntu@54.156.134.142 "cd ~/clouddesk && docker com
 - `PUT /api/instances/:id` - Update instance
 - `DELETE /api/instances/:id` - Delete instance
 - `POST /api/instances/:id/test-connection` - Test SSH connection (body: `{ password }`)
+- `DELETE /api/instances/:id/host-key` - Forget the pinned SSH host key (after a server rebuild)
 - Instance tools (all take the account password in the body): `preflight`, `software/*`, `files/*` (SFTP), `database/*`, `terminal/execute`, `port-forward/*`
 
 #### Other
