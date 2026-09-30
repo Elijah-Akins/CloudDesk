@@ -172,6 +172,8 @@ export const createInstanceSchema = Joi.object({
     .messages({
       'any.required': 'Credential (SSH key or password) is required',
     }),
+  // Account password the credential was encrypted with; verified server-side
+  password: Joi.string().max(AUTH_CONSTANTS.MAX_PASSWORD_LENGTH),
   tags: Joi.array()
     .items(Joi.string().min(1).max(30).trim())
     .max(10)
@@ -219,6 +221,8 @@ export const updateInstanceSchema = Joi.object({
   authType: Joi.string()
     .valid(...AUTH_TYPES),
   credential: Joi.string(),
+  // Account password the new credential was encrypted with; verified server-side
+  password: Joi.string().max(AUTH_CONSTANTS.MAX_PASSWORD_LENGTH),
   tags: Joi.array()
     .items(Joi.string().min(1).max(30).trim())
     .max(10),
@@ -290,6 +294,9 @@ export const paginationSchema = Joi.object({
 });
 
 export const instanceQuerySchema = paginationSchema.keys({
+  sortBy: Joi.string()
+    .valid('createdAt', 'updatedAt', 'name', 'host', 'provider', 'status', 'lastConnectedAt')
+    .default('createdAt'),
   search: Joi.string()
     .max(100)
     .trim(),

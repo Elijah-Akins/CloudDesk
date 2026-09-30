@@ -1,11 +1,15 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { User } from '../models/User';
 import { Instance } from '../models/Instance';
 import { Session } from '../models/Session';
+import { SessionInvite } from '../models/SessionInvite';
 import { AuditLog } from '../models/AuditLog';
 import { asyncHandler, AuthRequest } from '../middleware';
 import { HTTP_STATUS, ERROR_CODES } from '../config/constants';
-import { NotFoundError, ForbiddenError, UnauthorizedError } from '../utils/errors';
+import { NotFoundError, ForbiddenError, UnauthorizedError, ValidationError } from '../utils/errors';
+import { sessionService } from '../services/sessionService';
+import { sessionBridgeManager } from '../websocket/SessionBridge';
 import bcrypt from 'bcrypt';
 
 /**
@@ -206,6 +210,10 @@ export const deleteAccount = asyncHandler(async (req: Request, res: Response): P
     return;
   }
 
+  if (typeof password !== 'string' || !password) {
+    throw new ValidationError('Password is required to delete your account');
+  }
+
   // Get user with password field
   const user = await User.findById(userId).select('+password');
   if (!user) {
@@ -218,19 +226,37 @@ export const deleteAccount = asyncHandler(async (req: Request, res: Response): P
     throw new UnauthorizedError('Invalid password', ERROR_CODES.INVALID_CREDENTIALS);
   }
 
+  // End live sessions first, so tunnels, SSH connections and remote VNC servers
+  // don't outlive the account
+  await sessionService.disconnectAllUserSessions(userId);
+
+  // Remove the user from sessions they were invited into, including live connections
+  const guestSessions = await Session.find({ 'activeViewers.userId': userId }).select('_id');
+  if (guestSessions.length > 0) {
+    await Session.updateMany(
+      { 'activeViewers.userId': userId },
+      { $pull: { activeViewers: { userId: new mongoose.Types.ObjectId(userId) } } }
+    );
+    for (const guestSession of guestSessions) {
+      sessionBridgeManager.getBridge(guestSession._id.toString())?.kickViewer(userId, 'Account deleted');
+    }
+  }
+
   // Delete all user data
   const deleteResults = await Promise.all([
     // Delete all user's instances
     Instance.deleteMany({ userId }),
     // Delete all user's sessions
     Session.deleteMany({ userId }),
+    // Delete invites the user created
+    SessionInvite.deleteMany({ createdBy: userId }),
     // Delete audit logs (optional - keep for compliance)
     AuditLog.deleteMany({ userId }),
     // Finally delete the user
     User.deleteOne({ _id: userId }),
   ]);
 
-  const [instancesDeleted, sessionsDeleted, auditLogsDeleted, userDeleted] = deleteResults;
+  const [instancesDeleted, sessionsDeleted, , auditLogsDeleted, userDeleted] = deleteResults;
 
   res.status(HTTP_STATUS.OK).json({
     success: true,

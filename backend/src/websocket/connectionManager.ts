@@ -9,6 +9,12 @@ interface ConnectionEntry {
   missedPongs: number;
 }
 
+/**
+ * Tracks VNC WebSocket connections and pings them to detect dead peers.
+ *
+ * Connections are keyed by a per-connection ID, not by session: a shared
+ * session has one connection per participant.
+ */
 class ConnectionManager {
   private connections: Map<string, ConnectionEntry> = new Map();
   private heartbeatInterval: NodeJS.Timeout | null = null;
@@ -42,12 +48,9 @@ class ConnectionManager {
   }
 
   /**
-   * Add a new connection
+   * Register a connection. It is forgotten automatically when the socket closes.
    */
-  addConnection(sessionId: string, ws: WebSocket, info: WSConnectionInfo): void {
-    // Close existing connection if any
-    this.removeConnection(sessionId);
-
+  addConnection(connectionId: string, ws: WebSocket, info: WSConnectionInfo): void {
     const entry: ConnectionEntry = {
       ws,
       info,
@@ -55,72 +58,67 @@ class ConnectionManager {
       missedPongs: 0,
     };
 
-    this.connections.set(sessionId, entry);
+    this.connections.set(connectionId, entry);
 
-    // Set up ping/pong handlers
     ws.on('pong', () => {
-      const conn = this.connections.get(sessionId);
-      if (conn) {
-        conn.isAlive = true;
-        conn.missedPongs = 0;
+      entry.isAlive = true;
+      entry.missedPongs = 0;
+    });
+
+    ws.once('close', () => {
+      if (this.connections.get(connectionId) === entry) {
+        this.connections.delete(connectionId);
       }
     });
 
-    logger.debug(`WebSocket connection added: ${sessionId}`);
+    logger.debug(`WebSocket connection added: ${connectionId} (session ${info.sessionId})`);
   }
 
   /**
-   * Remove a connection
+   * Close and forget a connection
    */
-  removeConnection(sessionId: string): void {
-    const entry = this.connections.get(sessionId);
+  removeConnection(connectionId: string, terminate: boolean = false): void {
+    const entry = this.connections.get(connectionId);
+    if (!entry) return;
 
-    if (entry) {
-      try {
-        if (entry.ws.readyState === WebSocket.OPEN) {
-          entry.ws.close();
-        }
-      } catch (error) {
-        logger.warn(`Error closing WebSocket for session ${sessionId}:`, error);
+    this.connections.delete(connectionId);
+
+    try {
+      if (terminate) {
+        entry.ws.terminate();
+      } else if (entry.ws.readyState === WebSocket.OPEN) {
+        entry.ws.close();
       }
-
-      this.connections.delete(sessionId);
-      logger.debug(`WebSocket connection removed: ${sessionId}`);
+    } catch (error) {
+      logger.warn(`Error closing WebSocket ${connectionId}:`, error);
     }
+
+    logger.debug(`WebSocket connection removed: ${connectionId}`);
   }
 
   /**
-   * Get connection by session ID
+   * Close every connection to a session
    */
-  getConnection(sessionId: string): WebSocket | null {
-    const entry = this.connections.get(sessionId);
-    return entry?.ws || null;
-  }
-
-  /**
-   * Get connection info by session ID
-   */
-  getConnectionInfo(sessionId: string): WSConnectionInfo | null {
-    const entry = this.connections.get(sessionId);
-    return entry?.info || null;
-  }
-
-  /**
-   * Check if a connection exists
-   */
-  hasConnection(sessionId: string): boolean {
-    return this.connections.has(sessionId);
+  removeSessionConnections(sessionId: string): number {
+    let closed = 0;
+    for (const [connectionId, entry] of Array.from(this.connections)) {
+      if (entry.info.sessionId === sessionId) {
+        this.removeConnection(connectionId);
+        closed++;
+      }
+    }
+    return closed;
   }
 
   /**
    * Get all connections for a user
    */
-  getConnectionsByUser(userId: string): Array<{ sessionId: string; info: WSConnectionInfo }> {
-    const result: Array<{ sessionId: string; info: WSConnectionInfo }> = [];
+  getConnectionsByUser(userId: string): Array<{ connectionId: string; info: WSConnectionInfo }> {
+    const result: Array<{ connectionId: string; info: WSConnectionInfo }> = [];
 
-    for (const [sessionId, entry] of this.connections) {
+    for (const [connectionId, entry] of this.connections) {
       if (entry.info.userId === userId) {
-        result.push({ sessionId, info: entry.info });
+        result.push({ connectionId, info: entry.info });
       }
     }
 
@@ -133,9 +131,9 @@ class ConnectionManager {
   closeConnectionsByUser(userId: string): number {
     let closedCount = 0;
 
-    for (const [sessionId, entry] of this.connections) {
+    for (const [connectionId, entry] of Array.from(this.connections)) {
       if (entry.info.userId === userId) {
-        this.removeConnection(sessionId);
+        this.removeConnection(connectionId);
         closedCount++;
       }
     }
@@ -151,24 +149,25 @@ class ConnectionManager {
   }
 
   /**
-   * Get all active sessions
+   * Get IDs of sessions with at least one connection
    */
   getActiveSessions(): string[] {
-    return Array.from(this.connections.keys());
+    return Array.from(new Set(Array.from(this.connections.values(), (entry) => entry.info.sessionId)));
   }
 
   /**
-   * Check connections and remove dead ones
+   * Ping every connection and drop the ones that stopped answering
    */
   private checkConnections(): void {
-    for (const [sessionId, entry] of this.connections) {
+    for (const [connectionId, entry] of Array.from(this.connections)) {
       if (!entry.isAlive) {
         entry.missedPongs++;
-        logger.debug(`Session ${sessionId} missed pong (${entry.missedPongs}/${this.MAX_MISSED_PONGS})`);
+        logger.debug(`Connection ${connectionId} missed pong (${entry.missedPongs}/${this.MAX_MISSED_PONGS})`);
 
         if (entry.missedPongs >= this.MAX_MISSED_PONGS) {
-          logger.warn(`WebSocket connection dead after ${this.MAX_MISSED_PONGS} missed pongs, removing: ${sessionId}`);
-          this.removeConnection(sessionId);
+          logger.warn(`WebSocket connection dead after ${this.MAX_MISSED_PONGS} missed pongs, removing: ${connectionId}`);
+          // A dead peer won't complete a close handshake
+          this.removeConnection(connectionId, true);
           continue;
         }
       }
@@ -176,59 +175,23 @@ class ConnectionManager {
       // Mark as not alive, will be set to true on pong
       entry.isAlive = false;
 
-      // Send ping
       try {
         if (entry.ws.readyState === WebSocket.OPEN) {
           entry.ws.ping();
         }
       } catch (error) {
-        logger.warn(`Error sending ping to session ${sessionId}:`, error);
-        this.removeConnection(sessionId);
+        logger.warn(`Error sending ping to ${connectionId}:`, error);
+        this.removeConnection(connectionId, true);
       }
     }
-  }
-
-  /**
-   * Send message to a specific session
-   */
-  sendToSession(sessionId: string, message: unknown): boolean {
-    const entry = this.connections.get(sessionId);
-
-    if (!entry || entry.ws.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-
-    try {
-      const data = typeof message === 'string' ? message : JSON.stringify(message);
-      entry.ws.send(data);
-      return true;
-    } catch (error) {
-      logger.warn(`Error sending message to session ${sessionId}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Broadcast message to all connections
-   */
-  broadcast(message: unknown): number {
-    let sentCount = 0;
-
-    for (const sessionId of this.connections.keys()) {
-      if (this.sendToSession(sessionId, message)) {
-        sentCount++;
-      }
-    }
-
-    return sentCount;
   }
 
   /**
    * Close all connections
    */
   closeAll(): void {
-    for (const sessionId of this.connections.keys()) {
-      this.removeConnection(sessionId);
+    for (const connectionId of Array.from(this.connections.keys())) {
+      this.removeConnection(connectionId);
     }
 
     logger.info('All WebSocket connections closed');

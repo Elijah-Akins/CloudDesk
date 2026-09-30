@@ -8,8 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint src/**/*.ts",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "test": "node --require ts-node/register/transpile-only --require ./test/setup.ts --test test/*.test.ts",
+    "test:watch": "node --require ts-node/register/transpile-only --require ./test/setup.ts --test --watch test/*.test.ts"
   },
   "keywords": [
     "clouddesk",

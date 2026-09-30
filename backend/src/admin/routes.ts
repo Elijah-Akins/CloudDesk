@@ -4,6 +4,7 @@
  */
 
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAdminAuth } from './middleware';
 import authController from './controllers/auth';
 import dashboardController from './controllers/dashboard';
@@ -14,9 +15,20 @@ import analyticsController from './controllers/analytics';
 
 const router = Router();
 
+// The admin form lives outside /api, so the API rate limiters don't cover it.
+// Keep the budget tight (it guards admin accounts) and answer with a redirect
+// the HTML login page can display.
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => res.redirect('/admin/login?error=ratelimit'),
+});
+
 // Public routes (login)
 router.get('/login', authController.loginPage);
-router.post('/login', authController.handleLogin);
+router.post('/login', adminLoginLimiter, authController.handleLogin);
 
 // Protected routes (require admin session)
 router.get('/logout', authController.logout);

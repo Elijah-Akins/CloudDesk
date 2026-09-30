@@ -14,6 +14,7 @@ import {
   PackageManager,
 } from '../config/constants';
 import { encryptionService } from '../services/encryptionService';
+import { ValidationError } from '../utils/errors';
 
 // OS Information stored after detection
 export interface IOSInfo {
@@ -67,7 +68,9 @@ export interface IInstanceDocument extends IInstance, Document {
   _id: mongoose.Types.ObjectId;
   getDecryptedCredential(): string;
   getFullyDecryptedCredential(userPassword: string): string;
+  hasLegacyCredential(): boolean;
   setCredential(credential: string): void;
+  setPasswordEncryptedCredential(plaintext: string, userPassword: string): void;
   markConnected(): Promise<void>;
 }
 
@@ -231,13 +234,47 @@ instanceSchema.methods.getDecryptedCredential = function (): string {
 // Instance method to fully decrypt credential (server-side + client-side with user password)
 instanceSchema.methods.getFullyDecryptedCredential = function (userPassword: string): string {
   const instance = this as IInstanceDocument;
-  return encryptionService.decryptCredential(instance.encryptedCredential, userPassword);
+  const inner = encryptionService.decrypt(instance.encryptedCredential);
+
+  // Older clients could save a credential without the password-based layer (the
+  // dashboard's quick-edit dialog did). Use it as-is rather than failing forever;
+  // callers upgrade it with setPasswordEncryptedCredential once it's proven to work.
+  if (!encryptionService.isClientEncrypted(inner)) {
+    return inner;
+  }
+
+  try {
+    return encryptionService.decryptWithPassword(inner, userPassword);
+  } catch {
+    throw new ValidationError(
+      'Could not decrypt the stored credential. Check that you entered your account password; ' +
+        'if it is correct, edit the instance and re-enter its SSH key or password.'
+    );
+  }
+};
+
+// Instance method: true if the credential lacks the password-based encryption layer
+instanceSchema.methods.hasLegacyCredential = function (): boolean {
+  const instance = this as IInstanceDocument;
+  return !encryptionService.isClientEncrypted(encryptionService.decrypt(instance.encryptedCredential));
 };
 
 // Instance method to set encrypted credential
 instanceSchema.methods.setCredential = function (credential: string): void {
   const instance = this as IInstanceDocument;
   instance.encryptedCredential = encryptionService.encrypt(credential);
+};
+
+// Instance method to store a plaintext credential with both encryption layers
+// (password-based, then server-side), matching what the frontend produces
+instanceSchema.methods.setPasswordEncryptedCredential = function (
+  plaintext: string,
+  userPassword: string
+): void {
+  const instance = this as IInstanceDocument;
+  instance.encryptedCredential = encryptionService.encrypt(
+    encryptionService.encryptWithPassword(plaintext, userPassword)
+  );
 };
 
 // Instance method to mark as connected

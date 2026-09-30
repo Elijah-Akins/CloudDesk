@@ -58,6 +58,17 @@ export class ForbiddenError extends AppError {
   }
 }
 
+/**
+ * A license tier limit was hit. Uses 403 plus a *_LIMIT_REACHED code, which the
+ * frontend turns into an upgrade prompt, with the usage numbers in details.
+ */
+export class LicenseLimitError extends AppError {
+  constructor(message: string, code: ErrorCode, details: { current: number; limit: number }) {
+    super(message, HTTP_STATUS.FORBIDDEN, code, details);
+    Object.setPrototypeOf(this, LicenseLimitError.prototype);
+  }
+}
+
 export class NotFoundError extends AppError {
   constructor(message: string = 'Resource not found', code: ErrorCode = ERROR_CODES.NOT_FOUND) {
     super(message, HTTP_STATUS.NOT_FOUND, code);
@@ -125,6 +136,7 @@ export default {
   ValidationError,
   UnauthorizedError,
   ForbiddenError,
+  LicenseLimitError,
   NotFoundError,
   ConflictError,
   SSHError,

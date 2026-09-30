@@ -23,6 +23,7 @@ export const loginPage = (req: Request, res: Response): void => {
   const errorMessages: Record<string, string> = {
     invalid: 'Invalid email or password',
     admin: 'Admin access required',
+    ratelimit: 'Too many login attempts. Please wait a few minutes and try again.',
     server: 'An error occurred. Please try again.',
   };
 
@@ -158,6 +159,12 @@ export const handleLogin = async (req: Request, res: Response): Promise<void> =>
     const isValid = await user.comparePassword(password);
     if (!isValid) {
       logger.warn('Admin login attempt - invalid password', { email });
+      res.redirect('/admin/login?error=invalid');
+      return;
+    }
+
+    if (!user.isActive) {
+      logger.warn('Admin login attempt - account inactive', { email });
       res.redirect('/admin/login?error=invalid');
       return;
     }

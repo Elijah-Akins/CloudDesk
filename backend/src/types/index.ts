@@ -100,6 +100,8 @@ export interface SSHCommandResult {
   stdout: string;
   stderr: string;
   code: number;
+  /** Set when output exceeded the requested maxOutputBytes and the command was ended */
+  truncated?: boolean;
 }
 
 // Tunnel types

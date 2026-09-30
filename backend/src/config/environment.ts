@@ -63,6 +63,7 @@ interface Environment {
 
   // License
   LICENSE_KEY: string;
+  LICENSE_SERVER_URL: string;
 
   // Docker (for session controller)
   DOCKER_NETWORK: string;
@@ -128,7 +129,7 @@ export function loadEnvironment(): Environment {
     // Security
     JWT_ACCESS_SECRET: getEnvVariable('JWT_ACCESS_SECRET'),
     JWT_REFRESH_SECRET: getEnvVariable('JWT_REFRESH_SECRET'),
-    JWT_ACCESS_EXPIRY: getEnvVariable('JWT_ACCESS_EXPIRY', '24h'),
+    JWT_ACCESS_EXPIRY: getEnvVariable('JWT_ACCESS_EXPIRY', '15m'),
     JWT_REFRESH_EXPIRY: getEnvVariable('JWT_REFRESH_EXPIRY', '7d'),
     ENCRYPTION_KEY: getEnvVariable('ENCRYPTION_KEY'),
     ADMIN_SECRET: getEnvVariable('ADMIN_SECRET', ''),
@@ -173,6 +174,7 @@ export function loadEnvironment(): Environment {
 
     // License
     LICENSE_KEY: getEnvVariable('LICENSE_KEY', ''),
+    LICENSE_SERVER_URL: getEnvVariable('LICENSE_SERVER_URL', 'https://clouddesk-production.up.railway.app'),
 
     // Docker
     DOCKER_NETWORK: getEnvVariable('DOCKER_NETWORK', 'clouddesk-network'),

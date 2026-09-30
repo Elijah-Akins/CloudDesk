@@ -10,7 +10,13 @@ interface ActiveTunnel {
   info: TunnelInfo;
   server: net.Server;
   sshClient: Client;
+  sockets: Set<net.Socket>;
+  /** False once the SSH connection underneath has dropped */
+  sshAlive: boolean;
 }
+
+// How long to wait for the tunnel's listener to finish closing before moving on
+const TUNNEL_CLOSE_TIMEOUT_MS = 5000;
 
 class TunnelService {
   private activeTunnels: Map<number, ActiveTunnel> = new Map();
@@ -37,9 +43,14 @@ class TunnelService {
       throw new TunnelError('No available ports for tunnel');
     }
 
+    const sockets = new Set<net.Socket>();
+
     return new Promise((resolve, reject) => {
       // Create local TCP server
       const server = net.createServer((socket) => {
+        sockets.add(socket);
+        socket.on('close', () => sockets.delete(socket));
+
         // For each incoming connection, create a forwarded connection
         sshClient.forwardOut(
           socket.remoteAddress || '127.0.0.1',
@@ -93,10 +104,16 @@ class TunnelService {
         };
 
         // Store tunnel info
-        this.activeTunnels.set(localPort, {
+        const tunnel: ActiveTunnel = {
           info: tunnelInfo,
           server,
           sshClient,
+          sockets,
+          sshAlive: true,
+        };
+        this.activeTunnels.set(localPort, tunnel);
+        sshClient.once('close', () => {
+          tunnel.sshAlive = false;
         });
         this.usedPorts.add(localPort);
 
@@ -107,7 +124,8 @@ class TunnelService {
   }
 
   /**
-   * Close a tunnel by local port
+   * Close a tunnel by local port: stop listening, drop its open connections and
+   * end the SSH connection it runs over (the tunnel owns that connection)
    */
   async closeTunnel(localPort: number): Promise<void> {
     const tunnel = this.activeTunnels.get(localPort);
@@ -117,14 +135,32 @@ class TunnelService {
       return;
     }
 
-    return new Promise((resolve) => {
+    this.activeTunnels.delete(localPort);
+
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => {
+        logger.warn(`Tunnel on port ${localPort} did not close within ${TUNNEL_CLOSE_TIMEOUT_MS}ms`);
+        resolve();
+      }, TUNNEL_CLOSE_TIMEOUT_MS);
+
+      // server.close() only completes once every accepted connection is gone
       tunnel.server.close(() => {
-        this.activeTunnels.delete(localPort);
-        this.usedPorts.delete(localPort);
-        logger.info(`Tunnel closed on port ${localPort}`);
+        clearTimeout(timeout);
         resolve();
       });
+      for (const socket of tunnel.sockets) {
+        socket.destroy();
+      }
     });
+
+    try {
+      tunnel.sshClient.end();
+    } catch (error) {
+      logger.warn(`Error ending SSH connection for tunnel on port ${localPort}:`, error);
+    }
+
+    this.usedPorts.delete(localPort);
+    logger.info(`Tunnel closed on port ${localPort}`);
   }
 
   /**
@@ -241,8 +277,8 @@ class TunnelService {
       return false;
     }
 
-    // Check if the server is still listening
-    return tunnel.server.listening;
+    // The listener must be up and the SSH connection it forwards over still open
+    return tunnel.server.listening && tunnel.sshAlive;
   }
 }
 

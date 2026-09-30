@@ -121,11 +121,8 @@ export const authorize = (...roles: string[]) => {
  * Get client IP address from request
  */
 export const getClientIp = (req: Request): string => {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ips = typeof forwarded === 'string' ? forwarded : forwarded[0];
-    return ips.split(',')[0].trim();
-  }
+  // req.ip already resolves X-Forwarded-For according to the `trust proxy` setting;
+  // trusting the header's first entry directly would let clients spoof audit-log IPs
   return req.ip || req.socket.remoteAddress || 'unknown';
 };
 

@@ -84,9 +84,9 @@ class SSHService {
   async executeCommand(
     client: Client,
     command: string,
-    options: { timeout?: number; sudo?: boolean } = {}
+    options: { timeout?: number; sudo?: boolean; maxOutputBytes?: number } = {}
   ): Promise<SSHCommandResult> {
-    const { timeout = SSH_CONSTANTS.COMMAND_TIMEOUT, sudo = false } = options;
+    const { timeout = SSH_CONSTANTS.COMMAND_TIMEOUT, sudo = false, maxOutputBytes } = options;
 
     const finalCommand = sudo ? `sudo ${command}` : command;
 
@@ -104,18 +104,33 @@ class SSHService {
 
         let stdout = '';
         let stderr = '';
+        let outputBytes = 0;
+        let truncated = false;
+
+        // Stop reading (and end the command) once the caller's output budget is spent
+        const countOutput = (data: Buffer): boolean => {
+          if (maxOutputBytes === undefined) return true;
+          if (truncated) return false;
+          outputBytes += data.length;
+          if (outputBytes > maxOutputBytes) {
+            truncated = true;
+            stream.close();
+            return false;
+          }
+          return true;
+        };
 
         stream.on('close', (code: number) => {
           clearTimeout(timeoutId);
-          resolve({ stdout, stderr, code });
+          resolve({ stdout, stderr, code, ...(truncated && { truncated }) });
         });
 
         stream.on('data', (data: Buffer) => {
-          stdout += data.toString();
+          if (countOutput(data)) stdout += data.toString();
         });
 
         stream.stderr.on('data', (data: Buffer) => {
-          stderr += data.toString();
+          if (countOutput(data)) stderr += data.toString();
         });
 
         stream.on('error', (streamErr: Error) => {

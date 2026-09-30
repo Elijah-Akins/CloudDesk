@@ -461,19 +461,27 @@ export const createDirectory = asyncHandler(async (req: Request, res: Response) 
 export const getClipboard = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.user!;
   const { sessionId } = req.params;
-  const { password, displayNumber } = req.body;
+  const { password } = req.body;
 
-  if (!password || displayNumber === undefined) {
-    throw new ValidationError('Password and displayNumber are required');
+  if (!password) {
+    throw new ValidationError('Password is required');
   }
 
   // Get session and verify ownership
   const Session = (await import('../models/Session')).Session;
-  const session = await Session.findOne({ _id: sessionId, userId }).populate('instanceId');
+  const session = await Session.findOne({
+    _id: sessionId,
+    userId,
+    status: { $in: ['connecting', 'connected'] },
+  }).populate('instanceId');
 
   if (!session) {
     throw new NotFoundError('Session not found', ERROR_CODES.SESSION_NOT_FOUND);
   }
+
+  // The display comes from the session record, never from the client: it is
+  // interpolated into a remote shell command
+  const displayNumber = session.vncDisplayNumber;
 
   const instance = await Instance.findByUserIdAndId(userId, (session.instanceId as any)._id);
   if (!instance) {
@@ -517,18 +525,26 @@ export const getClipboard = asyncHandler(async (req: Request, res: Response) => 
 export const setClipboard = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.user!;
   const { sessionId } = req.params;
-  const { password, displayNumber, content } = req.body;
+  const { password, content } = req.body;
 
-  if (!password || displayNumber === undefined || content === undefined) {
-    throw new ValidationError('Password, displayNumber, and content are required');
+  if (!password || typeof content !== 'string') {
+    throw new ValidationError('Password and content are required');
   }
 
   const Session = (await import('../models/Session')).Session;
-  const session = await Session.findOne({ _id: sessionId, userId }).populate('instanceId');
+  const session = await Session.findOne({
+    _id: sessionId,
+    userId,
+    status: { $in: ['connecting', 'connected'] },
+  }).populate('instanceId');
 
   if (!session) {
     throw new NotFoundError('Session not found', ERROR_CODES.SESSION_NOT_FOUND);
   }
+
+  // The display comes from the session record, never from the client: it is
+  // interpolated into a remote shell command
+  const displayNumber = session.vncDisplayNumber;
 
   const instance = await Instance.findByUserIdAndId(userId, (session.instanceId as any)._id);
   if (!instance) {
@@ -845,6 +861,77 @@ export const executeQuery = asyncHandler(async (req: Request, res: Response) => 
 });
 
 // ============================================
+// Browser Terminal
+// ============================================
+
+const TERMINAL_COMMAND_TIMEOUT_MS = 30000;
+const TERMINAL_MAX_OUTPUT_BYTES = 1024 * 1024;
+
+/**
+ * Run one shell command on the instance for the browser terminal. Each command
+ * runs in a fresh login shell in the user's home directory.
+ * POST /api/instances/:id/terminal/execute
+ */
+export const executeTerminalCommand = asyncHandler(async (req: Request, res: Response) => {
+  const { userId } = req.user!;
+  const { id: instanceId } = req.params;
+  const { password, command } = req.body;
+
+  if (!password) {
+    throw new ValidationError('Password is required to decrypt credentials');
+  }
+
+  if (typeof command !== 'string' || !command.trim()) {
+    throw new ValidationError('Command is required');
+  }
+
+  if (command.length > 4096) {
+    throw new ValidationError('Command is too long');
+  }
+
+  const instance = await Instance.findByUserIdAndId(userId, instanceId);
+  if (!instance) {
+    throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
+  }
+
+  const sshConfig: SSHConfig = {
+    host: instance.host,
+    port: instance.port,
+    username: instance.username,
+  };
+
+  const credential = instance.getFullyDecryptedCredential(password);
+  if (instance.authType === 'key') {
+    sshConfig.privateKey = credential;
+  } else {
+    sshConfig.password = credential;
+  }
+
+  let sshClient;
+  try {
+    sshClient = await sshService.createConnection(sshConfig);
+    const result = await sshService.executeCommand(sshClient, command, {
+      timeout: TERMINAL_COMMAND_TIMEOUT_MS,
+      maxOutputBytes: TERMINAL_MAX_OUTPUT_BYTES,
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.code,
+        truncated: result.truncated ?? false,
+      },
+    });
+  } finally {
+    if (sshClient) {
+      sshService.closeConnection(sshClient);
+    }
+  }
+});
+
+// ============================================
 // Port Forwarding Features
 // ============================================
 
@@ -863,6 +950,17 @@ export const createPortForward = asyncHandler(async (req: Request, res: Response
 
   if (!localPort || !remotePort) {
     throw new ValidationError('Local and remote ports are required');
+  }
+
+  // net.Server#listen treats a string as a socket path, so insist on real port numbers
+  if (!Number.isInteger(localPort) || localPort < 1024 || localPort > 65535) {
+    throw new ValidationError('Local port must be an integer between 1024 and 65535');
+  }
+  if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65535) {
+    throw new ValidationError('Remote port must be an integer between 1 and 65535');
+  }
+  if (remoteHost && (typeof remoteHost !== 'string' || !/^[A-Za-z0-9.:_-]{1,253}$/.test(remoteHost))) {
+    throw new ValidationError('Remote host must be a hostname or IP address');
   }
 
   const instance = await Instance.findByUserIdAndId(userId, instanceId);

@@ -35,15 +35,9 @@ export const createRateLimiter = (options: RateLimitOptions = {}): RateLimitRequ
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, default: false },
-    keyGenerator: keyGenerator || ((req) => {
-      // Use X-Forwarded-For if available, otherwise use IP
-      const forwarded = req.headers['x-forwarded-for'];
-      if (forwarded) {
-        const ips = typeof forwarded === 'string' ? forwarded : forwarded[0];
-        return ips.split(',')[0].trim();
-      }
-      return (req as unknown as { ip?: string }).ip || 'unknown';
-    }),
+    // req.ip honours the app's `trust proxy` setting. Reading X-Forwarded-For
+    // directly would let any client pick its own rate-limit key.
+    keyGenerator: keyGenerator || ((req) => (req as unknown as { ip?: string }).ip || 'unknown'),
     handler: (req, res, _next, options) => {
       logger.warn('Rate limit exceeded', {
         ip: (req as unknown as { ip?: string }).ip,

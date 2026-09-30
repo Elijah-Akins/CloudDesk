@@ -7,8 +7,9 @@ import { sshService } from '../services/sshService';
 import { encryptionService } from '../services/encryptionService';
 import { asyncHandler, AuthRequest, getClientIp, getUserAgent } from '../middleware';
 import { HTTP_STATUS, ERROR_CODES, AUDIT_ACTIONS } from '../config/constants';
-import { NotFoundError } from '../utils/errors';
+import { NotFoundError, UnauthorizedError, ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { escapeRegex } from '../utils/helpers';
 import { CreateInstanceDTO, UpdateInstanceDTO, SSHConfig, InstanceQuery } from '../types';
 
 /**
@@ -34,9 +35,10 @@ export const getInstances = asyncHandler(async (req: Request, res: Response): Pr
   const filter: Record<string, unknown> = { userId: new mongoose.Types.ObjectId(userId) };
 
   if (search) {
+    const pattern = escapeRegex(String(search));
     filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { host: { $regex: search, $options: 'i' } },
+      { name: { $regex: pattern, $options: 'i' } },
+      { host: { $regex: pattern, $options: 'i' } },
     ];
   }
 
@@ -104,6 +106,46 @@ export const getInstanceById = asyncHandler(async (req: Request, res: Response):
 });
 
 /**
+ * Confirm the account password is correct.
+ */
+const verifyAccountPassword = async (userId: string, password: string): Promise<void> => {
+  const user = await User.findById(userId).select('+password');
+  if (!user || !user.password || !(await user.comparePassword(password))) {
+    throw new UnauthorizedError(
+      'Incorrect password. Please enter your account password.',
+      ERROR_CODES.INCORRECT_PASSWORD
+    );
+  }
+};
+
+/**
+ * Make sure an incoming credential is one the user can decrypt later: it must be
+ * encrypted with their account password (see lib/utils/crypto.ts in the frontend).
+ * Clients that send the password get a full check; older clients that don't are
+ * at least prevented from storing a plaintext credential.
+ */
+const verifyCredentialEncryption = async (
+  userId: string,
+  credential: string,
+  password: string | undefined
+): Promise<void> => {
+  if (!password) {
+    if (!encryptionService.isClientEncrypted(credential)) {
+      throw new ValidationError('The credential must be encrypted with your account password before it is saved.');
+    }
+    return;
+  }
+
+  await verifyAccountPassword(userId, password);
+
+  try {
+    encryptionService.decryptWithPassword(credential, password);
+  } catch {
+    throw new ValidationError('The credential could not be decrypted with your account password. Please re-enter it.');
+  }
+};
+
+/**
  * Create a new instance
  * POST /api/instances
  */
@@ -113,43 +155,7 @@ export const createInstance = asyncHandler(async (req: Request, res: Response): 
   const ipAddress = getClientIp(req);
   const userAgent = getUserAgent(req);
 
-  // Verify user's password before creating instance with encrypted credentials
-  if (data.password) {
-    const user = await User.findById(userId).select('+password');
-    if (!user) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        error: {
-          message: 'User not found',
-          code: ERROR_CODES.USER_NOT_FOUND,
-        },
-      });
-      return;
-    }
-
-    if (!user.password) {
-      res.status(HTTP_STATUS.BAD_REQUEST).json({
-        success: false,
-        error: {
-          message: 'Account password not set. Please set a password in your profile settings.',
-          code: 'PASSWORD_NOT_SET',
-        },
-      });
-      return;
-    }
-
-    const isPasswordValid = await user.comparePassword(data.password);
-    if (!isPasswordValid) {
-      res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        error: {
-          message: 'Incorrect password. Please enter your correct account password.',
-          code: ERROR_CODES.INCORRECT_PASSWORD,
-        },
-      });
-      return;
-    }
-  }
+  await verifyCredentialEncryption(userId, data.credential, data.password);
 
   // Encrypt the credential
   const encryptedCredential = encryptionService.encrypt(data.credential);
@@ -219,6 +225,7 @@ export const updateInstance = asyncHandler(async (req: Request, res: Response): 
 
   // If credential is being updated, encrypt it
   if (data.credential !== undefined) {
+    await verifyCredentialEncryption(userId, data.credential, data.password);
     instance.encryptedCredential = encryptionService.encrypt(data.credential);
   }
 
@@ -232,7 +239,7 @@ export const updateInstance = asyncHandler(async (req: Request, res: Response): 
     status: 'success',
     ipAddress,
     userAgent,
-    details: { instanceId: id, updatedFields: Object.keys(data) },
+    details: { instanceId: id, updatedFields: Object.keys(data).filter((field) => field !== 'password') },
   });
 
   logger.info(`Instance updated: ${instance.name} by user ${userId}`);
@@ -292,14 +299,21 @@ export const deleteInstance = asyncHandler(async (req: Request, res: Response): 
 export const testConnection = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { userId } = (req as AuthRequest).user;
   const { id } = req.params;
+  const { password } = req.body ?? {};
   const ipAddress = getClientIp(req);
   const userAgent = getUserAgent(req);
+
+  if (typeof password !== 'string' || !password) {
+    throw new ValidationError('Password is required to decrypt credentials');
+  }
 
   const instance = await Instance.findByUserIdAndId(userId, id);
 
   if (!instance) {
     throw new NotFoundError('Instance not found', ERROR_CODES.INSTANCE_NOT_FOUND);
   }
+
+  await verifyAccountPassword(userId, password);
 
   // Build SSH config
   const sshConfig: SSHConfig = {
@@ -308,8 +322,8 @@ export const testConnection = asyncHandler(async (req: Request, res: Response): 
     username: instance.username,
   };
 
-  // Get decrypted credential
-  const credential = instance.getDecryptedCredential();
+  // Both encryption layers have to come off: server-side, then the password-based one
+  const credential = instance.getFullyDecryptedCredential(password);
   if (instance.authType === 'key') {
     sshConfig.privateKey = credential;
   } else {
